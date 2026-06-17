@@ -4,6 +4,18 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.17] - 2026-06-17
+
+### Added
+- **Rate limiting** — Token-bucket `createOllamaRateLimiter(...)` based on `maxParallelWorkers`. Every `createSession(...)` acquires a token before dispatch. Prevents overwhelming local Ollama.
+- **Actual session kill** — `checkWatchdog()` now calls `client.v2.session.close(...)` on stuck sessions (not just marking Map entries inactive). Sends notification on kill.
+- **Notifications** — `src/utils/notifier.ts` supports ntfy.sh push and custom webhooks. Events: `mission_started`, `mission_completed`, `mission_failed`, `mission_stuck`, `backup_created`. Configured via `notify` in `opencode.json`.
+- **Structured logging** — `Logger.log(level, component, msg, meta)` writes JSON to `.opencode/logs/orchestrator-{date}.ndjson`. Severity levels: trace, debug, info, warn, error, fatal.
+
+### Changed
+- `executeTodos()` is now gated by rate limiter; waits up to 60s for capacity.
+- `checkWatchdog()` is now async (returns `Promise<void>`).
+
 ## [2.1.16] - 2026-06-17
 
 ### Added

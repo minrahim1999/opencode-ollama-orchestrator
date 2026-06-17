@@ -16,7 +16,13 @@
         "maxRetries": 5,
         "verbose": true,
         "requireApproval": true,
-        "maxSubagentDepth": 3
+        "maxSubagentDepth": 3,
+        "notify": {
+          "ntfyTopic": "my-opencode-alerts",
+          "minLevel": "failed"
+        },
+        "rateLimitCapacity": 6,
+        "rateLimitRefill": 3
       }
     ]
   ],

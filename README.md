@@ -590,6 +590,26 @@ Call the **revert_mission** tool with the mission slug to restore the pre-missio
 
 **Fix:** Upgrade to **v2.1.16+**. Circuit breaker tracks consecutive failures per model. After 5 failures, the model is permanently skipped and fallback is used immediately. Failure count resets when fallback succeeds.
 
+**Fix:** Upgrade to **v2.1.17+**. Token-bucket rate limiter acquires a token before every session creation. Capacity scales with `maxParallelWorkers`. Default: burst=`workers×2`, refill=`workers`/sec.
+
+### Watchdog marks sessions inactive but they keep running
+
+**Symptom:** Sessions stuck >15 minutes are "marked inactive" but continue consuming tokens.
+
+**Fix:** Upgrade to **v2.1.17+**. Watchdog now calls `client.v2.session.close(...)` to actually terminate stuck sessions. Sends notification on kill.
+
+### No alerts when missions fail overnight
+
+**Symptom:** A mission fails at 3am. You don't find out until morning.
+
+**Fix:** Upgrade to **v2.1.17+**. Configure `notify` in `opencode.json`: ntfy.sh topic or custom webhook. Events: mission started, completed, failed, stuck, backup created.
+
+### Running up a big bill with no visibility
+
+**Symptom:** Hundreds of tokens spent with no log of what happened.
+
+**Fix:** Upgrade to **v2.1.17+**. Structured JSON logs written to `.opencode/logs/orchestrator-{date}.ndjson`. Severity levels: trace/debug/info/warn/error/fatal. 7-day rotation.
+
 ---
 
 ## Built-in Agent Isolation
@@ -610,6 +630,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **2.1.17** | 2026-06-17 | Rate limiting, real session kill, notifications, structured logging |
 | **2.1.16** | 2026-06-17 | Mission resume, memory purge, graceful shutdown, circuit breaker |
 | **2.1.15** | 2026-06-17 | Parallel execution, task failure isolation, mission memory, atomic writes, auto-cleanup |
 | **2.1.14** | 2026-06-17 | Pre-mission backup + revert_mission tool |

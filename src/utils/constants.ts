@@ -32,9 +32,13 @@ export function loadOrchestratorConfig(directory: string): {
   doxAutoInit: boolean;
   doxAutoCloseout: boolean;
   doxEnabled: boolean;
+  notify?: { ntfyTopic?: string; webhookUrl?: string; minLevel?: string; headers?: Record<string, string> };
+  rateLimitCapacity?: number;
+  rateLimitRefill?: number;
 } {
   const configPath = join(directory, ".opencode", "opencode.json");
   let agentNames = DEFAULT_NAMES;
+  let pluginOpts: any = {};
   let opts = {
     maxParallelWorkers: 5,
     maxRetries: 3,
@@ -54,7 +58,7 @@ export function loadOrchestratorConfig(directory: string): {
           p === "opencode-ollama-orchestrator" ||
           (Array.isArray(p) && p[0] === "opencode-ollama-orchestrator")
       );
-      const pluginOpts = Array.isArray(pluginEntry) ? pluginEntry[1] : {};
+      pluginOpts = Array.isArray(pluginEntry) ? pluginEntry[1] : {};
       if (pluginOpts?.agents) {
         agentNames = {
           strategist: pluginOpts.agents.strategist ?? DEFAULT_NAMES.strategist,
@@ -75,7 +79,13 @@ export function loadOrchestratorConfig(directory: string): {
     } catch {}
   }
 
-  return { names: agentNames, ...opts };
+  return {
+    names: agentNames,
+    ...opts,
+    notify: pluginOpts?.notify,
+    rateLimitCapacity: pluginOpts?.rateLimitCapacity,
+    rateLimitRefill: pluginOpts?.rateLimitRefill,
+  };
 }
 
 /** Ensure .opencode/missions/ directory exists */

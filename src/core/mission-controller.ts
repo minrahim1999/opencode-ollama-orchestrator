@@ -14,6 +14,8 @@ import { parseTodos, updateTodoStatus, exportTodosJson, type ParsedTodo } from "
 import { createBackup, revertBackup, deleteBackup } from "../utils/backup.js";
 import { writeFileAtomicSync } from "../utils/atomic.js";
 import { Logger } from "../utils/logger.js";
+import { createOllamaRateLimiter, TokenBucket } from "../utils/ratelimiter.js";
+import { notify, type NotifyConfig } from "../utils/notifier.js";
 import { readFileSync, existsSync, writeFileSync, mkdirSync, renameSync, readdirSync, statSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -106,9 +108,17 @@ export class MissionController {
   private runningTasks = new Map<string, Promise<void>>();
   private modelFailures = new Map<string, number>();
   private brokenModels = new Set<string>();
+  private rateLimiter: TokenBucket;
+  private notifyConfig: NotifyConfig;
 
-  constructor(deps: EventHandlerDeps) {
+  constructor(deps: EventHandlerDeps, opts?: { notify?: NotifyConfig; rateLimitCapacity?: number; rateLimitRefill?: number }) {
     this.deps = deps;
+    this.notifyConfig = opts?.notify ?? {};
+    const cfg = loadOrchestratorConfig(deps.directory);
+    this.rateLimiter = createOllamaRateLimiter(cfg.maxParallelWorkers);
+    if (opts?.rateLimitCapacity && opts?.rateLimitRefill) {
+      this.rateLimiter = new TokenBucket({ capacity: opts.rateLimitCapacity, refillRate: opts.rateLimitRefill });
+    }
     Logger.init(deps.directory, "info");
     this.loadMissionsFromDisk();
     this.startCleanup();
@@ -284,6 +294,11 @@ export class MissionController {
 
     this.missions.set(missionId, ctx);
     this.emit(ctx, "Mission started", auto);
+    this.sendNotification({
+      type: "mission_started",
+      missionSlug: slug,
+      message: `Mission ${slug} started: ${description.slice(0, 80)}`,
+    }).catch(() => {});
 
     // ---- DOX INIT ----
     if (cfg.doxAutoInit) {
@@ -524,15 +539,52 @@ export class MissionController {
   }
 
   /** Watchdog: detect stuck sessions and kill them */
-  checkWatchdog(): void {
+  async checkWatchdog(): Promise<void> {
     const STUCK_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes
+    const killed: string[] = [];
     for (const [sid, sess] of Array.from(this.deps.sessions.entries())) {
       if (!sess.active) continue;
       const idle = Date.now() - sess.lastPromptAt;
       if (idle > STUCK_THRESHOLD_MS) {
-        console.error(`[opencode-orchestrator] WATCHDOG: Session ${sid.slice(0, 8)}… (${sess.agent}) stuck for ${Math.round(idle / 60000)}min. Marking inactive.`);
+        Logger.log("warn", "watchdog", `Killing stuck session ${sid.slice(0, 8)}`, {
+          agent: sess.agent,
+          idleMin: Math.round(idle / 60000),
+          taskId: sess.taskId,
+          missionSlug: sess.missionSlug,
+        });
+        // Try to actually terminate the session via client
+        try {
+          await this.deps.client?.v2?.session?.close?.({ sessionId: sid });
+        } catch {
+          // Session close not supported or already closed
+        }
+        // Mark inactive in our tracking
         this.deps.sessions.set(sid, { ...sess, active: false });
+        killed.push(sid);
+        // Notify if configured
+        if (sess.missionSlug) {
+          await this.sendNotification({
+            type: "mission_stuck",
+            missionSlug: sess.missionSlug,
+            message: `Session ${sid.slice(0, 8)} (${sess.agent}) killed after ${Math.round(idle / 60000)}min idle`,
+            details: { taskId: sess.taskId, agent: sess.agent },
+          });
+        }
       }
+    }
+    if (killed.length > 0) {
+      Logger.log("info", "watchdog", `Killed ${killed.length} stuck session(s)`, { count: killed.length });
+    }
+  }
+
+  /** Send notification if configured. Never throws. */
+  private async sendNotification(event: Parameters<typeof notify>[1]): Promise<void> {
+    try {
+      if (this.notifyConfig.ntfyTopic || this.notifyConfig.webhookUrl) {
+        await notify(this.notifyConfig, event);
+      }
+    } catch {
+      // Notifications must never break missions
     }
   }
 
@@ -711,6 +763,15 @@ export class MissionController {
     if (allDone) {
       ctx.state = anyFailed ? "failed" : "completed";
       ctx.completedAt = Date.now();
+      const status = anyFailed ? "failed" : "completed";
+      const doneCount = ctx.todos.filter((t) => t.status === "completed").length;
+      const failedCount = ctx.todos.filter((t) => t.status === "failed").length;
+      this.sendNotification({
+        type: status === "failed" ? "mission_failed" : "mission_completed",
+        missionSlug: ctx.slug,
+        message: `Mission ${ctx.slug} ${status}. ${doneCount}/${ctx.todos.length} tasks done, ${failedCount} failed.`,
+        details: { done: doneCount, failed: failedCount, total: ctx.todos.length },
+      }).catch(() => {});
     }
     this.saveMissionState(ctx);
   }
@@ -898,6 +959,16 @@ export class MissionController {
   }
 
   private async createSession(agent: string, title: string, taskId?: string, slug?: string): Promise<{ id: string }> {
+    // Rate limit: wait for capacity
+    const acquired = await this.rateLimiter.waitForTokens(1, 50, 60000);
+    if (!acquired) {
+      Logger.log("error", "rate-limit", `Rate limit exceeded creating session for ${agent}`, { agent, title });
+      throw new Error(`Rate limit exceeded: could not acquire token for session creation`);
+    }
+    return this._createSessionInner(agent, title, taskId, slug);
+  }
+
+  private async _createSessionInner(agent: string, title: string, taskId?: string, slug?: string): Promise<{ id: string }> {
     const userConfig = loadUserConfig();
     const agentConfig = userConfig?.agent?.[agent];
     let modelObj: { providerID: string; modelID: string } | null = null;

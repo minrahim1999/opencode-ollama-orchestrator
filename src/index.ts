@@ -11,8 +11,15 @@ const plugin: Plugin = async (input) => {
   const { client, directory } = input;
   const sessions = new Map<string, import("./core/types.js").SessionInfo>();
 
+  // Load orchestrator config for notify/rateLimit options
+  const { loadOrchestratorConfig } = await import("./utils/constants.js");
+  const cfg = loadOrchestratorConfig(directory);
+
   // Single shared MissionController for both events and tools
-  const controller = new MissionController({ client, directory, sessions });
+  const controller = new MissionController(
+    { client, directory, sessions },
+    cfg.notify ? { notify: cfg.notify as any, rateLimitCapacity: cfg.rateLimitCapacity, rateLimitRefill: cfg.rateLimitRefill } : undefined
+  );
 
   return {
     config: createConfigHandler({ agents: AGENTS }),
