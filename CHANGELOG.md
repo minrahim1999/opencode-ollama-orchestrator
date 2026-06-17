@@ -4,6 +4,15 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.10] - 2026-06-17
+
+### Fixed
+- **Strategist communication modes** — Added explicit 3-mode framework (ASK / RECOMMEND / ANSWER) to prevent the strategist from treating specific task requests as vague questions. Previously, messages like "check ticket API and compare with docs/V4-Ticket-API.md" were incorrectly classified as vague, causing unnecessary clarification loops.
+  - **ASK**: Only when genuinely missing critical details (e.g., "fix the bug" with no context).
+  - **RECOMMEND**: Default mode — describe plan, ask "Proceed?", wait for "yes" (e.g., "check API and compare with docs" → "I will read the doc, compare models, report mismatches. Proceed?").
+  - **ANSWER**: When user asks for information, no mission created (e.g., "What is JWT?").
+- **Event handler task detection** — Added `"check"`, `"compare"`, `"review"`, `"audit"`, `"sync"`, `"align"` to `looksLikeTaskRequest()` strong keywords so these verbs properly trigger mission detection instead of being rejected as casual chat.
+
 ## [2.1.9] - 2026-06-17
 
 ### Fixed
