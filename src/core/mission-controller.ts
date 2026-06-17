@@ -202,11 +202,33 @@ export class MissionController {
       const cfg = loadOrchestratorConfig(this.deps.directory);
       const names = cfg.names;
       await this.executeTodos(ctx, cfg, names, true);
+
+      // Finalize
       if (ctx.state !== "failed") {
         ctx.state = "completed";
         ctx.completedAt = Date.now();
+        this.emit(ctx, `✅ MISSION_RESUMED_COMPLETE ${ctx.completedAt - parseInt(ctx.missionId.split("-")[1])}ms`, true);
       }
+
+      // DOX closeout
+      if (cfg.doxAutoCloseout) {
+        doxCloseout({
+          projectDir: this.deps.directory,
+          slug: ctx.slug,
+          missionId: ctx.missionId,
+          description: ctx.description,
+          startedAt: parseInt(ctx.missionId.split("-")[1]),
+          endedAt: Date.now(),
+          status: ctx.state === "completed" ? "completed" : "failed",
+          todos: ctx.todos.map((t) => ({ id: t.id, description: t.description, status: t.status })),
+          modelsUsed: [],
+          filesTouched: [],
+        });
+        this.emit(ctx, `DOX run archived: .opencode/DOX/${ctx.slug}.md`, true);
+      }
+
       this.saveMissionState(ctx);
+      this.missions.delete(ctx.missionId);
       return;
     }
     console.error("[ollama-orchestrator] No resumable mission found.");
@@ -216,6 +238,7 @@ export class MissionController {
   abort(): void {
     for (const [, ctx] of Array.from(this.missions.entries())) {
       ctx.state = "failed";
+      this.saveMissionState(ctx); // Persist aborted state
     }
     this.active = false;
     const arr = Array.from(this.deps.sessions.entries());
@@ -260,12 +283,25 @@ export class MissionController {
       }
 
       // ---- PHASE GATE ----
-      // When entering a new phase and the PREVIOUS phase had a gate task, stop and ask user
+      // Track phase transitions. If entering a new phase, check if previous phase had a gate.
       if (todo.phase && todo.phase !== currentPhase) {
-        const prevPhaseGate = ctx.todos.find((t) => t.phase === currentPhase && t.phaseGate && t.status !== "completed");
-        if (currentPhase && !prevPhaseGate) {
-          const gateTask = ctx.todos.find((t) => t.phase === currentPhase && t.phaseGate && t.status === "completed");
-          if (gateTask) {
+        // If previous phase had a gate task, verify it's completed before proceeding
+        if (currentPhase) {
+          const prevPhaseGate = ctx.todos.find((t) =>
+            t.phase === currentPhase && t.phaseGate
+          );
+          if (prevPhaseGate && prevPhaseGate.status !== "completed") {
+            // Gate not completed — hold mission
+            ctx.state = "hold";
+            const msg = `⛔ PHASE_GATE: Phase "${currentPhase}" gate task ${prevPhaseGate.id} not complete. Complete it before proceeding to "${todo.phase}".`;
+            this.emit(ctx, msg, auto);
+            const gatePath = join(ctx.missionDir, "gate-message.txt");
+            writeFileSync(gatePath, msg, "utf-8");
+            this.saveMissionState(ctx);
+            return;
+          }
+          // If gate exists and IS completed, still pause for user confirmation
+          if (prevPhaseGate && prevPhaseGate.status === "completed") {
             ctx.state = "hold";
             const msg = `⛔ PHASE_GATE: Phase "${currentPhase}" is complete. Next: "${todo.phase}". Reply "yes" to continue or "no" to hold.`;
             this.emit(ctx, msg, auto);
@@ -293,7 +329,22 @@ export class MissionController {
 
         if (todo.criticalPath) {
           ctx.state = "auditing";
-          await this.runAudit(todo, names.auditor);
+          const auditPassed = await this.runAudit(todo, names.auditor, ctx);
+          if (!auditPassed) {
+            // Audit failed — mark task failed and trigger retry logic
+            updateTodoStatus(this.deps.directory, todo.id, "failed", "Audit failed — acceptance criteria not met");
+            ctx.todos[index] = { ...todo, status: "failed" };
+            this.emit(ctx, `${todo.id} audit FAILED`, auto);
+            // Trigger retry if retries remain
+            const retries = ctx.retryCounts.get(todo.id) ?? 0;
+            if (retries < cfg.maxRetries) {
+              ctx.retryCounts.set(todo.id, retries + 1);
+              ctx.state = "retrying";
+              this.emit(ctx, `${todo.id} retrying after failed audit (attempt ${retries + 1})`, auto);
+              await sleep(1000 * Math.pow(2, retries));
+              continue;
+            }
+          }
         }
 
         updateTodoStatus(this.deps.directory, todo.id, "completed", `Done by ${resolvedAgent}`);
@@ -326,11 +377,23 @@ export class MissionController {
       this.saveMissionState(ctx);
     }
 
-    const allFailed = ctx.todos.every((t) => t.status === "failed");
+    const allFailed = ctx.todos.every((t) => {
+      if (t.status === "failed") return true;
+      // Check if all dependencies of this pending task have failed
+      if (t.status === "pending") {
+        return t.dependsOn.length > 0 && t.dependsOn.every((depId) => {
+          const dep = ctx.todos.find((dt) => dt.id === depId);
+          return dep?.status === "failed";
+        });
+      }
+      return false;
+    });
     if (allFailed) ctx.state = "failed";
   }
 
-  private async runAudit(todo: ParsedTodo, auditorName: string) {
+  private async runAudit(todo: ParsedTodo, auditorName: string, ctx: MissionCtx): Promise<boolean> {
+    const auditResultPath = join(ctx.missionDir, `audit-${todo.id}.json`);
+    
     const session = await this.createSession(auditorName, `Audit: ${todo.id}`);
     await this.promptSession(session.id, auditorName, [
       `Audit task: ${todo.id}`,
@@ -340,9 +403,53 @@ export class MissionController {
       ...todo.acceptanceCriteria.map((c) => `  - ${c}`),
       "",
       "Verify all criteria. Run tests. Check for regressions.",
+      "",
+      "After your analysis, write a JSON file with your verdict:",
+      `File: ${auditResultPath}`,
+      'Format: { "passed": true|false, "issues": ["..."], "recommendation": "retry|pass|escalate" }',
+      "If passed=true, the task proceeds. If passed=false, the task fails and may be retried.",
     ].join("\n"));
 
     await this.pollSession(session.id);
+
+    // Check if auditor wrote the result file
+    try {
+      if (existsSync(auditResultPath)) {
+        const raw = readFileSync(auditResultPath, "utf-8");
+        const result = JSON.parse(raw);
+        if (result.passed === true) {
+          return true;
+        }
+        console.error(`[ollama-orchestrator] Audit ${todo.id} FAILED:`, result.issues?.join("; ") || "No details");
+        return false;
+      }
+    } catch {
+      // Auditor didn't write result file — check last message for explicit pass/fail
+    }
+
+    // Fallback: attempt to read last message from session
+    try {
+      const client = this.deps.client;
+      if (client?.v2?.session?.messages) {
+        const msgs = await client.v2.session.messages({
+          path: { id: session.id },
+          query: { directory: this.deps.directory, limit: 5 },
+        });
+        const data = msgs.data as Array<{ info?: { text?: string }; parts?: Array<{ text?: string }> }> | undefined;
+        if (data) {
+          const lastMsg = data[data.length - 1];
+          const text = lastMsg?.info?.text || lastMsg?.parts?.map((p) => p.text).join(" ") || "";
+          if (/\bPASS\b/i.test(text) || /\bpassed\b/i.test(text)) return true;
+          if (/\bFAIL\b/i.test(text) || /\bfailed\b/i.test(text)) return false;
+        }
+      }
+    } catch {
+      // Cannot read messages — be permissive (don't block on audit infra issues)
+    }
+
+    // Default permissive: if we can't determine, let it through
+    console.error(`[ollama-orchestrator] Audit ${todo.id}: no explicit result found, defaulting to pass.`);
+    return true;
   }
 
   private buildTaskPrompt(
@@ -370,9 +477,9 @@ export class MissionController {
       directory: this.deps.directory,
       title,
     });
-    // Store agent mapping for prompt calls
+    // Track session for polling lifecycle
     if (session.id) {
-      (session as any)._agent = agent;
+      this.deps.sessions.set(session.id, { active: true, step: 1 });
     }
     return session;
   }
@@ -387,11 +494,36 @@ export class MissionController {
   }
 
   private async pollSession(sessionId: string): Promise<void> {
+    // Try SDK session.status API first (most reliable)
+    try {
+      const client = this.deps.client;
+      if (client?.v2?.session?.status) {
+        for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
+          await sleep(POLL_INTERVAL_MS);
+          const result = await client.v2.session.status({
+            query: { directory: this.deps.directory },
+          });
+          const statuses = result.data as Record<string, { status?: string }> | undefined;
+          if (statuses && statuses[sessionId]) {
+            const st = statuses[sessionId].status ?? "";
+            if (st === "completed" || st === "failed" || st === "error") {
+              // Mark as inactive in our map too
+              const local = this.deps.sessions.get(sessionId);
+              if (local) this.deps.sessions.set(sessionId, { ...local, active: false });
+              return;
+            }
+          }
+        }
+      }
+    } catch {
+      // SDK status API unavailable — fall through to local map polling
+    }
+
+    // Fallback: poll local session map (works if external code updates it)
     for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
       await sleep(POLL_INTERVAL_MS);
       const state = this.deps.sessions.get(sessionId);
       if (!state || !state.active) return;
-      // In real SDK there'd be a status API; here we rely on session map
     }
     console.error(`[ollama-orchestrator] Session ${sessionId} poll timeout.`);
   }

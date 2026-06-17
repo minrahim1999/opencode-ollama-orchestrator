@@ -25,7 +25,11 @@ export function createEventHandler(deps: EventHandlerDeps) {
     if (isMessageEvent) {
       const text: string = event.data?.text ?? event.data?.content ?? "";
       if (text && !shouldIgnore(text) && looksLikeTaskRequest(text)) {
-        await controller.start(text, true); // always automatic
+        try {
+          await controller.start(text, true); // always automatic
+        } catch (err) {
+          console.error(`[ollama-orchestrator v${VERSION}] Mission start failed:`, err);
+        }
       }
       return event;
     }
