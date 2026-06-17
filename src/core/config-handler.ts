@@ -1,6 +1,6 @@
 import { DEFAULT_AGENT_NAMES } from "../agents/index.js";
 import type { AgentPrompts } from "../agents/index.js";
-import type { AgentNameConfig, InheritedAgentConfig, PluginConfig } from "../types.js";
+import type { AgentNameConfig, AgentConfig, PluginConfig } from "../types.js";
 
 interface ConfigHandlerDeps {
   agents: AgentPrompts;
@@ -18,34 +18,229 @@ function resolveAgentNames(custom?: AgentNameConfig) {
   };
 }
 
-/** Build agent config by merging user opencode.json settings with orchestrator defaults */
-function buildAgentConfig(
-  name: string,
-  prompt: string,
-  mode: "primary" | "subagent",
-  userAgentConfig?: InheritedAgentConfig
-) {
-  const base = {
-    description: `${name} agent for Ollama orchestrator`,
-    mode: userAgentConfig?.mode ?? mode,
-    prompt: userAgentConfig?.prompt ?? prompt,
-    maxTokens: userAgentConfig?.maxTokens ?? 8192,
-    color: userAgentConfig?.color ?? undefined,
+/** Default tool bundles per role — overridable by user */
+function defaultTools(role: string): AgentConfig["tools"] {
+  const all: AgentConfig["tools"] = {
+    bash: true,
+    edit: true,
+    write: true,
+    read: true,
+    glob: true,
+    grep: true,
+    webfetch: true,
+    websearch: true,
+    list: true,
+    task: true,
+    question: true,
+    external_directory: true,
+    doom_loop: true,
   };
 
-  // Merge inherited fields from user opencode.json agent config
-  const inherited: Record<string, any> = {};
-  if (userAgentConfig?.model) inherited.model = userAgentConfig.model;
-  if (userAgentConfig?.fallbackModel) inherited.fallbackModel = userAgentConfig.fallbackModel;
-  if (userAgentConfig?.temperature !== undefined) inherited.temperature = userAgentConfig.temperature;
-  if (userAgentConfig?.topP !== undefined) inherited.topP = userAgentConfig.topP;
-  if (userAgentConfig?.topK !== undefined) inherited.topK = userAgentConfig.topK;
-  if (userAgentConfig?.thinking) inherited.thinking = userAgentConfig.thinking;
-  if (userAgentConfig?.skills) inherited.skills = userAgentConfig.skills;
-  if (userAgentConfig?.permission) inherited.permission = userAgentConfig.permission;
-  if (userAgentConfig?.systemPrompt) inherited.systemPrompt = userAgentConfig.systemPrompt;
+  const readOnly: AgentConfig["tools"] = {
+    read: true,
+    glob: true,
+    grep: true,
+    list: true,
+    webfetch: true,
+    websearch: true,
+    task: true,
+    question: true,
+  };
 
-  return { ...inherited, ...base };
+  const planOnly: AgentConfig["tools"] = {
+    ...readOnly,
+    write: true,
+    bash: true,
+  };
+
+  const auditOnly: AgentConfig["tools"] = {
+    ...readOnly,
+    bash: true,
+  };
+
+  switch (role) {
+    case "strategist":
+      return readOnly;
+    case "architect":
+      return planOnly;
+    case "engineer":
+      return all;
+    case "auditor":
+      return auditOnly;
+    case "specialist":
+      return readOnly;
+    default:
+      return readOnly;
+  }
+}
+
+/** Default permission bundles per role — overridable by user */
+function defaultPermission(role: string): AgentConfig["permission"] {
+  const allAllow: AgentConfig["permission"] = {
+    edit: "allow",
+    write: "allow",
+    bash: "allow",
+    read: "allow",
+    glob: "allow",
+    grep: "allow",
+    webfetch: "allow",
+    websearch: "allow",
+    list: "allow",
+    task: "allow",
+    question: "allow",
+    external_directory: "allow",
+    doom_loop: "allow",
+    skill: { "*": "allow" },
+  };
+
+  const readOnly: AgentConfig["permission"] = {
+    read: "allow",
+    glob: "allow",
+    grep: "allow",
+    list: "allow",
+    webfetch: "allow",
+    websearch: "allow",
+    task: "allow",
+    question: "allow",
+    skill: { "*": "allow" },
+  };
+
+  const planPerm: AgentConfig["permission"] = {
+    edit: "deny",
+    bash: "deny",
+    write: {
+      ".opencode/plans/*": "allow",
+      ".opencode/plans/**": "allow",
+      ".opencode/todo/*": "allow",
+      ".opencode/todo/**": "allow",
+      "AGENTS.md": "allow",
+      "*/AGENTS.md": "allow",
+      "**/AGENTS.md": "allow",
+      ".opencode/DOX/*": "allow",
+      ".opencode/DOX/**": "allow",
+      "*": "deny",
+    },
+    read: "allow",
+    glob: "allow",
+    grep: "allow",
+    webfetch: "allow",
+    websearch: "allow",
+    list: "allow",
+    task: "allow",
+    question: "allow",
+    skill: { "*": "allow" },
+  };
+
+  const auditPerm: AgentConfig["permission"] = {
+    edit: "deny",
+    bash: "allow",
+    write: {
+      ".opencode/reviews/*": "allow",
+      ".opencode/reviews/**": "allow",
+      "AGENTS.md": "allow",
+      "*": "deny",
+    },
+    read: "allow",
+    glob: "allow",
+    grep: "allow",
+    list: "allow",
+    task: "allow",
+    question: "allow",
+    skill: { "*": "allow" },
+  };
+
+  switch (role) {
+    case "strategist":
+      return readOnly;
+    case "architect":
+      return planPerm;
+    case "engineer":
+      return allAllow;
+    case "auditor":
+      return auditPerm;
+    case "specialist":
+      return readOnly;
+    default:
+      return readOnly;
+  }
+}
+
+/**
+ * Build complete agent config.
+ * Priority: orchestrator defaults → user overrides → hard orchestrator rules (mode, prompt merge).
+ *
+ * FORWARD LIST — every field from AgentConfig is propagated:
+ *   model, fallbackModel, smallModel, temperature, topP, topK,
+ *   maxTokens, description, prompt, systemPrompt, mode,
+ *   color, tools, permission, skills, thinking,
+ *   allowLoop, loopCount
+ */
+function buildAgentConfig(
+  name: string,
+  role: string,
+  prompt: string,
+  mode: "primary" | "subagent",
+  userCfg?: AgentConfig,
+  pluginOpts?: PluginConfig
+) {
+  // 1. Orchestrator default base
+  const defaults: AgentConfig = {
+    description: `${name} agent — Ollama Orchestrator ${role}`,
+    mode,
+    prompt,
+    maxTokens: 8192,
+    temperature: role === "strategist" ? 0.3 : role === "architect" ? 0.8 : 0.2,
+    tools: defaultTools(role),
+    permission: defaultPermission(role),
+    allowLoop: false,
+    loopCount: 0,
+  };
+
+  // 2. Plugin-level small_model fallback
+  if (pluginOpts?.smallModel) {
+    defaults.smallModel = pluginOpts.smallModel;
+  }
+  if (pluginOpts?.defaultAllowLoop !== undefined) {
+    defaults.allowLoop = pluginOpts.defaultAllowLoop;
+  }
+  if (pluginOpts?.defaultLoopCount !== undefined) {
+    defaults.loopCount = pluginOpts.defaultLoopCount;
+  }
+
+  // 3. Deep merge user config on top of defaults
+  // Build key list from AgentConfig so we forward everything
+  const merged: AgentConfig = { ...defaults };
+
+  if (userCfg) {
+    for (const k of Object.keys(userCfg) as (keyof AgentConfig)[]) {
+      // Special handling for prompt merge
+      if (k === "prompt" && userCfg.prompt) {
+        merged.prompt = userCfg.prompt; // full override
+        continue;
+      }
+      // Special handling for systemPrompt → prepend if exists
+      if (k === "systemPrompt" && userCfg.systemPrompt) {
+        merged.systemPrompt = userCfg.systemPrompt;
+        merged.prompt = `${userCfg.systemPrompt}\n\n${merged.prompt ?? ""}`;
+        continue;
+      }
+      // Everything else: shallow clone for objects, direct assign for primitives
+      const val = userCfg[k];
+      if (val !== undefined && val !== null) {
+        if (typeof val === "object" && !Array.isArray(val)) {
+          // Merge objects (tools, permission, thinking, skill scopes)
+          (merged as any)[k] = { ...(defaults as any)[k], ...val };
+        } else {
+          (merged as any)[k] = val;
+        }
+      }
+    }
+  }
+
+  // 4. HARD rules — orchestrator always wins on mode and role assignment
+  merged.mode = mode;
+
+  return merged;
 }
 
 export function createConfigHandler(deps: ConfigHandlerDeps) {
@@ -53,8 +248,7 @@ export function createConfigHandler(deps: ConfigHandlerDeps) {
     if (!config.agent) config.agent = {};
     if (!config.commands) config.commands = [];
 
-    // CRITICAL: Preserve built-in agents — never overwrite or disable them.
-    // These keys belong to OpenCode core subagents, not this plugin:
+    // CRITICAL: Preserve built-in agents
     const BUILTIN_AGENT_KEYS = new Set([
       "compaction",
       "explorer",
@@ -63,7 +257,7 @@ export function createConfigHandler(deps: ConfigHandlerDeps) {
       "debugger",
     ]);
 
-    // Resolve orchestrator-level plugin options from opencode.json
+    // Resolve plugin options from opencode.json
     const pluginOpts: PluginConfig =
       config.plugin?.find?.(
         (p: any) =>
@@ -73,8 +267,7 @@ export function createConfigHandler(deps: ConfigHandlerDeps) {
 
     const names = resolveAgentNames(pluginOpts?.agents);
 
-    // Safety: if any orchestrator agent name collides with a built-in, auto-rename
-    // and log a warning so the user knows. This keeps built-in functionality intact.
+    // Collision guard
     const renamed: Record<string, string> = {};
     for (const [role, name] of Object.entries(names)) {
       if (BUILTIN_AGENT_KEYS.has(name)) {
@@ -83,7 +276,6 @@ export function createConfigHandler(deps: ConfigHandlerDeps) {
         renamed[role] = safeName;
       }
     }
-
     if (Object.keys(renamed).length > 0) {
       console.warn(
         `[opencode-ollama-orchestrator] Built-in agent name collision detected. Auto-renamed:\n` +
@@ -94,37 +286,40 @@ export function createConfigHandler(deps: ConfigHandlerDeps) {
       );
     }
 
-    // Register ALL 5 agents — only Strategist is primary, rest are subagents
+    // Register all 5 agents
     const agentEntries: Array<[string, string, "primary" | "subagent"]> = [
-      [names.strategist, deps.agents.STRATEGIST_PROMPT, "primary"],
-      [names.architect, deps.agents.ARCHITECT_PROMPT, "subagent"],
-      [names.engineer, deps.agents.ENGINEER_PROMPT, "subagent"],
-      [names.auditor, deps.agents.AUDITOR_PROMPT, "subagent"],
-      [names.specialist, deps.agents.SPECIALIST_PROMPT, "subagent"],
+      [names.strategist, "strategist", "primary"],
+      [names.architect, "architect", "subagent"],
+      [names.engineer, "engineer", "subagent"],
+      [names.auditor, "auditor", "subagent"],
+      [names.specialist, "specialist", "subagent"],
     ];
 
-    for (const [name, prompt, mode] of agentEntries) {
-      const userConfig: InheritedAgentConfig | undefined = config.agent[name];
-      config.agent[name] = buildAgentConfig(name, prompt, mode, userConfig);
+    for (const [name, role, mode] of agentEntries) {
+      const userCfg: AgentConfig | undefined = config.agent[name];
+      const promptText =
+        deps.agents[`${role.toUpperCase()}_PROMPT` as keyof AgentPrompts] as string;
+      config.agent[name] = buildAgentConfig(name, role, promptText, mode, userCfg, pluginOpts);
     }
 
-    // Register orchestrator settings in config for runtime access
     // HARD enforce maxParallelWorkers = 3 (Ollama Pro limit)
     const userMaxParallel = pluginOpts.maxParallelWorkers;
-    const enforcedMaxParallel = userMaxParallel === undefined
-      ? 3
-      : Math.min(Math.max(1, userMaxParallel), 3);
+    const enforcedMaxParallel =
+      userMaxParallel === undefined ? 3 : Math.min(Math.max(1, userMaxParallel), 3);
 
     config.orchestrator = {
-      maxParallelWorkers: enforcedMaxParallel,  // NEVER exceeds 3
+      maxParallelWorkers: enforcedMaxParallel,
       maxRetries: Math.min(pluginOpts.maxRetries ?? 3, 5),
       verbose: pluginOpts.verbose ?? false,
       requireApproval: pluginOpts.requireApproval ?? false,
       maxSubagentDepth: Math.min(pluginOpts.maxSubagentDepth ?? 2, 3),
       agentNames: names,
+      // DOX settings
+      doxEnabled: pluginOpts.doxEnabled ?? true,
+      doxAutoInit: pluginOpts.doxAutoInit ?? true,
+      doxAutoCloseout: pluginOpts.doxAutoCloseout ?? true,
     };
 
-    // NO commands registered — plugin is fully automatic
-    // We intentionally do NOT register any slash commands
+    // NO commands registered
   };
 }

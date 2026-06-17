@@ -19,6 +19,10 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 - **Stall watcher** — Monitors `lastProgressAt`; auto-escalates to Specialist after 10 minutes no progress
 - **Dynamic worker throttling** — Drops from 3 to 1 worker when Ollama latency spikes detected
 - **Event handler intercepts `message.created`** — No command framework needed
+- **DOX Framework Integration** — Auto-init, auto-closeout, timestamped run records in `.opencode/DOX/`
+- **Full agent field forwarding** — `model`, `fallbackModel`, `smallModel`, `temperature`, `topP`, `topK`, `maxTokens`, `description`, `prompt`, `systemPrompt`, `mode`, `color`, `tools`, `permission`, `skills`, `thinking`, `allowLoop`, `loopCount` all propagated from opencode.json
+- **Built-in agent collision guard** — Auto-renames to `orchestrator-{name}` if user collides with core subagents
+- **Compaction resilience** — All agent prompts instruct re-read from disk after compaction events
 
 ### Changed
 - **Config handler**: Removed all command registration logic. Only agents + orchestrator settings remain.

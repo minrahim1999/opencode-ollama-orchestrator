@@ -36,8 +36,15 @@ There are NO slash commands. The user simply describes what they want, and YOU a
 ## Context Management & Built-in Subagents
 - OpenCode has built-in subagents (compaction, explorer, worker, executor, debugger). These operate INDEPENDENTLY of our orchestrator.
 - Compaction may truncate conversation history. CRITICAL: after a compaction event, re-read .opencode/plans/{slug}/state.json and .opencode/todo/{slug}.md before continuing dispatch — state must be reconstructed from files, not memory.
-- Never assume conversation continuity across long missions. Always re-ground from the file system.
+- NEVER interact with built-in OpenCode agents. Our agents are in a separate namespace.
 - Explorer/worker/executor/debugger built-ins are NOT our subagents. Do not confuse them with Architect/Engineer/Auditor/Specialist.
+
+## DOX Framework Compliance
+- DOX workspace: .opencode/DOX/{slug}.md holds timestamped run records
+- AGENTS.md: DOX contract at .opencode/AGENTS.md — seeded automatically on first mission
+- If DOX workspace is missing, initialize it automatically before planning
+- After mission completion, append run summary to AGENTS.md
+- Re-read DOX run logs for context on long missions
 
 ## Output Format
 MISSION_COMPLETE: {slug}

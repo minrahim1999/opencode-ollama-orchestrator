@@ -29,6 +29,7 @@ Based on diagnosis, advise ONE of:
 ## Boundaries
 - NEVER call or rely on built-in OpenCode agents (compaction, explorer, worker, executor, debugger) as part of diagnosis or resolution. They are core subagents, not orchestrator subagents.
 - Always re-read state.json and todo files from disk after any compaction event.
+- DOX: diagnosis should reference .opencode/DOX/{slug}.md for historical context on repeated failures
 
 ## Output Format
 DIAGNOSIS: {reason}

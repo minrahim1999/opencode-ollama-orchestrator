@@ -29,6 +29,9 @@ export function loadOrchestratorConfig(directory: string): {
   verbose: boolean;
   requireApproval: boolean;
   maxSubagentDepth: number;
+  doxAutoInit: boolean;
+  doxAutoCloseout: boolean;
+  doxEnabled: boolean;
 } {
   const configPath = join(directory, ".opencode", "opencode.json");
   let agentNames = DEFAULT_NAMES;
@@ -38,6 +41,9 @@ export function loadOrchestratorConfig(directory: string): {
     verbose: false,
     requireApproval: false,
     maxSubagentDepth: 2,
+    doxAutoInit: true,
+    doxAutoCloseout: true,
+    doxEnabled: true,
   };
 
   if (existsSync(configPath)) {
@@ -63,6 +69,9 @@ export function loadOrchestratorConfig(directory: string): {
       if (pluginOpts?.verbose !== undefined) opts.verbose = pluginOpts.verbose;
       if (pluginOpts?.requireApproval !== undefined) opts.requireApproval = pluginOpts.requireApproval;
       if (pluginOpts?.maxSubagentDepth !== undefined) opts.maxSubagentDepth = pluginOpts.maxSubagentDepth;
+      if (pluginOpts?.doxAutoInit !== undefined) opts.doxAutoInit = pluginOpts.doxAutoInit;
+      if (pluginOpts?.doxAutoCloseout !== undefined) opts.doxAutoCloseout = pluginOpts.doxAutoCloseout;
+      if (pluginOpts?.doxEnabled !== undefined) opts.doxEnabled = pluginOpts.doxEnabled;
     } catch {}
   }
 

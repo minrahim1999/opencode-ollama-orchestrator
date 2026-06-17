@@ -174,6 +174,41 @@ After any compaction event, Strategist re-grounds by re-reading these files befo
 
 ---
 
+## DOX Framework Integration
+
+The plugin auto-integrates with the DOX (Documentation of Execution) framework:
+
+| Feature | Default | Description |
+|---------|---------|-------------|
+| `doxEnabled` | `true` | Enable DOX timestamped run records |
+| `doxAutoInit` | `true` | Auto-create `.opencode/DOX/` + `AGENTS.md` on first mission |
+| `doxAutoCloseout` | `true` | Append run summary to `AGENTS.md` on completion |
+
+**Per-mission files created:**
+```
+.opencode/
+├── AGENTS.md              # DOX contract — seeded with orchestrator agents
+├── DOX/
+│   └── {slug}.md          # Timestamped run record with tasks, models, status
+├── plans/{slug}/
+│   ├── plan.md            # Architect's plan
+│   └── state.json         # Live mission state
+└── todo/{slug}.md         # Checkbox task list
+```
+
+**Disable DOX:**
+```json
+{
+  "plugin": [
+    ["opencode-ollama-orchestrator", {
+      "doxEnabled": false
+    }]
+  ]
+}
+```
+
+---
+
 ## Installation
 
 ```json
@@ -191,7 +226,90 @@ After any compaction event, Strategist re-grounds by re-reading these files befo
 }
 ```
 
-That's it. No commands. No configuration beyond models.
+That's it. No commands. But full agent customization is supported:
+
+**Full opencode.json example:**
+```json
+{
+  "plugin": [
+    ["opencode-ollama-orchestrator", {
+      "maxParallelWorkers": 3,
+      "maxRetries": 3,
+      "doxEnabled": true,
+      "doxAutoInit": true,
+      "doxAutoCloseout": true,
+      "defaultAllowLoop": false,
+      "defaultLoopCount": 0
+    }]
+  ],
+  "agent": {
+    "strategist": {
+      "model": "ollama/deepseek-v4-pro",
+      "fallbackModel": "ollama/deepseek-v4-flash",
+      "smallModel": "ollama/gemini-3-flash-preview",
+      "temperature": 0.3,
+      "topP": 0.9,
+      "maxTokens": 8192,
+      "mode": "primary",
+      "description": "Auto-orchestrator — detects missions and drives pipeline",
+      "skills": ["dox-system"],
+      "permission": {
+        "read": "allow",
+        "task": "allow",
+        "skill": { "*": "allow" }
+      }
+    },
+    "architect": {
+      "model": "ollama/deepseek-v4-flash",
+      "temperature": 0.8,
+      "mode": "subagent",
+      "permission": {
+        "write": { ".opencode/plans/*": "allow", ".opencode/todo/*": "allow", "AGENTS.md": "allow", "*": "deny" },
+        "read": "allow",
+        "task": "allow",
+        "skill": { "*": "allow" }
+      }
+    },
+    "engineer": {
+      "model": "ollama/kimi-k2.7-code",
+      "temperature": 0.2,
+      "mode": "subagent",
+      "tools": { "bash": true, "edit": true, "write": true },
+      "permission": {
+        "edit": "allow",
+        "bash": "allow",
+        "write": "allow",
+        "skill": { "*": "allow" }
+      }
+    },
+    "auditor": {
+      "model": "ollama/kimi-k2.6",
+      "temperature": 0.3,
+      "mode": "subagent",
+      "tools": { "bash": true },
+      "permission": {
+        "bash": "allow",
+        "read": "allow",
+        "skill": { "*": "allow" }
+      }
+    },
+    "specialist": {
+      "model": "ollama/deepseek-v4-flash",
+      "temperature": 0.4,
+      "mode": "subagent",
+      "allowLoop": true,
+      "loopCount": 3,
+      "permission": {
+        "read": "allow",
+        "task": "allow",
+        "skill": { "*": "allow" }
+      }
+    }
+  }
+}
+```
+
+All standard agent fields are forwarded: `model`, `fallbackModel`, `smallModel`, `temperature`, `topP`, `topK`, `maxTokens`, `description`, `prompt`, `systemPrompt`, `mode`, `color`, `tools`, `permission`, `skills`, `thinking`, `allowLoop`, `loopCount`.
 
 ---
 

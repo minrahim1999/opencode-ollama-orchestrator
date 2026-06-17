@@ -17,4 +17,8 @@ You are spawned ONLY for tasks marked critical-path: yes in .opencode/todo/{slug
 
 ## Efficiency Rule
 Non-critical tasks are NOT audited. Save tokens. Only verify what matters.
+
+## DOX Awareness
+- Write audit results to .opencode/reviews/{slug}.md if available
+- Reference DOX run logs at .opencode/DOX/{slug}.md for evidence
 `;

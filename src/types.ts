@@ -1,57 +1,47 @@
 /**
  * Core types for opencode-ollama-orchestrator
- * All user-configurable values are typed here for IntelliSense in opencode.json
+ * Mirrors OpenCode opencode.json agent block + orchestrator-specific extensions.
  */
 
-export interface OrchestratorConfig {
-  /** Custom agent names (defaults provided) */
-  agents?: AgentNameConfig;
-
-  /** Max parallel subagent sessions (default: 5) */
-  maxParallelWorkers?: number;
-
-  /** Max retries per failed task (default: 3) */
-  maxRetries?: number;
-
-  /** Enable verbose mission logging */
-  verbose?: boolean;
-
-  /** Require approval before executing shell commands in subagents */
-  requireApproval?: boolean;
-
-  /** Subagent depth limit (default: 2) */
-  maxSubagentDepth?: number;
+/**
+ * Per-agent tool permission map.
+ * OpenCode accepts either a flat Record<string, boolean> or nested objects.
+ */
+export interface AgentToolConfig {
+  bash?: boolean;
+  edit?: boolean;
+  write?: boolean;
+  read?: boolean;
+  glob?: boolean;
+  grep?: boolean;
+  webfetch?: boolean;
+  websearch?: boolean;
+  list?: boolean;
+  task?: boolean;
+  question?: boolean;
+  external_directory?: boolean;
+  doom_loop?: boolean;
+  [key: string]: boolean | undefined;
 }
 
-export interface AgentNameConfig {
-  /** Top-level mission orchestrator (default: "strategist") */
-  strategist?: string;
-
-  /** Task decomposition specialist (default: "architect") */
-  architect?: string;
-
-  /** Implementation engineer (default: "engineer") */
-  engineer?: string;
-
-  /** Output verifier (default: "auditor") */
-  auditor?: string;
-
-  /** Domain expert for deep delegation (default: "specialist") */
-  specialist?: string;
-}
-
-/** Agent configuration that inherits from opencode.json */
-export interface InheritedAgentConfig {
-  /** Primary model — MUST start with "ollama/" */
+/**
+ * Full agent configuration — EVERY field from opencode.json agent block
+ * is forwarded transparently. Nothing is dropped or hidden.
+ */
+export interface AgentConfig {
+  /** Primary model (MUST start with "ollama/" when locked) */
   model?: string;
 
-  /** Fallback model if primary is unavailable */
+  /** Fallback model if primary is unavailable or errors */
   fallbackModel?: string;
 
-  /** Temperature for creativity vs determinism */
+  /** Lightweight / fast model for quick tasks */
+  smallModel?: string;
+
+  /** Temperature: 0.0 = deterministic, >1.0 = creative */
   temperature?: number;
 
-  /** Top-p sampling */
+  /** Top-p nucleus sampling */
   topP?: number;
 
   /** Top-k sampling */
@@ -60,32 +50,113 @@ export interface InheritedAgentConfig {
   /** Max tokens per response */
   maxTokens?: number;
 
-  /** Thinking mode configuration */
+  /** Short description visible in agent switcher */
+  description?: string;
+
+  /** Full prompt override — replaces the orchestrator default */
+  prompt?: string;
+
+  /** System prompt additions (prepended to default, merged with prompt) */
+  systemPrompt?: string;
+
+  /** Agent mode — primary or subagent */
+  mode?: "primary" | "subagent";
+
+  /** TUI hex color */
+  color?: string;
+
+  /** Tool enable/disable flags */
+  tools?: AgentToolConfig;
+
+  /** Granular permission overrides */
+  permission?: {
+    edit?: "allow" | "deny";
+    write?: "allow" | "deny" | Record<string, any>;
+    bash?: "allow" | "deny";
+    read?: "allow" | "deny";
+    glob?: "allow" | "deny";
+    grep?: "allow" | "deny";
+    webfetch?: "allow" | "deny";
+    websearch?: "allow" | "deny";
+    list?: "allow" | "deny";
+    task?: "allow" | "deny";
+    question?: "allow" | "deny";
+    external_directory?: "allow" | "deny";
+    doom_loop?: "allow" | "deny";
+    skill?: Record<string, any>;
+    [key: string]: "allow" | "deny" | Record<string, any> | undefined;
+  };
+
+  /** Skills to load — array of skill names */
+  skills?: string[];
+
+  /** Thinking / reasoning budget */
   thinking?: {
     type: "enabled" | "disabled";
     budgetTokens?: number;
   };
 
-  /** Additional skills to load */
-  skills?: string[];
+  /** Orchestrator: whether this agent can loop (auto-retry same task) */
+  allowLoop?: boolean;
 
-  /** Custom prompt override (replaces default) */
-  prompt?: string;
-
-  /** System prompt additions (prepended to default) */
-  systemPrompt?: string;
-
-  /** Permission ruleset reference */
-  permission?: string;
-
-  /** Agent mode */
-  mode?: "primary" | "subagent";
-
-  /** Color for TUI display */
-  color?: string;
+  /** Orchestrator: max loop count before Specialist escalation */
+  loopCount?: number;
 }
 
-/** Runtime agent state */
+/** Full agent name override map */
+export interface AgentNameConfig {
+  strategist?: string;
+  architect?: string;
+  engineer?: string;
+  auditor?: string;
+  specialist?: string;
+}
+
+/** Plugin-level configuration (nested inside plugin array) */
+export interface OrchestratorConfig {
+  /** Custom agent names */
+  agents?: AgentNameConfig;
+
+  /** Max parallel subagent sessions — HARD capped to 3 for Ollama Pro */
+  maxParallelWorkers?: number;
+
+  /** Max retries per failed task */
+  maxRetries?: number;
+
+  /** Enable verbose logging */
+  verbose?: boolean;
+
+  /** Require approval for shell commands in subagents */
+  requireApproval?: boolean;
+
+  /** Max subagent nesting depth */
+  maxSubagentDepth?: number;
+
+  /** DOX: write timestamped run records */
+  doxEnabled?: boolean;
+
+  /** DOX: auto-create .opencode/DOX on first mission */
+  doxAutoInit?: boolean;
+
+  /** DOX: append to AGENTS.md on mission completion */
+  doxAutoCloseout?: boolean;
+
+  /** Global small_model override (fast inference) */
+  smallModel?: string;
+
+  /** Global loop defaults */
+  defaultAllowLoop?: boolean;
+  defaultLoopCount?: number;
+}
+
+/** Alias for backwards compatibility */
+export type InheritedAgentConfig = AgentConfig;
+
+/** Plugin options shape from opencode.json */
+export type PluginConfig = OrchestratorConfig;
+
+/* ─── Runtime types (unchanged) ─── */
+
 export interface AgentState {
   name: string;
   role: "strategist" | "architect" | "engineer" | "auditor" | "specialist";
@@ -96,7 +167,6 @@ export interface AgentState {
   depth: number;
 }
 
-/** Mission state tracker */
 export interface MissionState {
   id: string;
   description: string;
@@ -117,6 +187,3 @@ export interface TodoItem {
   acceptanceCriteria: string[];
   result?: string;
 }
-
-/** Plugin options passed from opencode.json */
-export type PluginConfig = OrchestratorConfig;

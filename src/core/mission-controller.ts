@@ -13,6 +13,15 @@ import { ensureProjectDirs, getMissionDirectory, slugify } from "../utils/paths.
 import { parseTodos, updateTodoStatus, exportTodosJson, type ParsedTodo } from "../utils/todo-parser.js";
 import { writeFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+  isDoxInitialized,
+  doxInit,
+  writeDoxRunHeader,
+  appendDoxLog,
+  doxCloseout,
+  doxCheck,
+  type DoxEnv,
+} from "../utils/dox.js";
 
 interface MissionCtx {
   missionId: string;
@@ -71,6 +80,32 @@ export class MissionController {
 
     this.missions.set(missionId, ctx);
     this.emit(ctx, "Mission started", auto);
+
+    // ---- DOX INIT ----
+    if (cfg.doxAutoInit) {
+      const doxOk = isDoxInitialized(this.deps.directory);
+      const { runFile } = doxInit(this.deps.directory, slug);
+      if (!doxOk) {
+        this.emit(ctx, "DOX workspace initialized", auto);
+      }
+      const doxCheckResult = doxCheck(this.deps.directory);
+      if (!doxCheckResult.ok) {
+        this.emit(ctx, `DOX check: missing ${doxCheckResult.missing.join(", ")}`, auto);
+      }
+      // Seed the DOX run header
+      writeDoxRunHeader({
+        projectDir: this.deps.directory,
+        slug,
+        missionId,
+        description,
+        startedAt: Date.now(),
+        status: "in_progress",
+        todos: [],
+        modelsUsed: [],
+        filesTouched: [],
+      });
+      this.emit(ctx, `DOX run seeded: ${runFile}`, auto);
+    }
 
     // ---- PLANNING ----
     ctx.state = "planning";
@@ -132,6 +167,23 @@ export class MissionController {
       ctx.state = "completed";
       ctx.completedAt = Date.now();
       this.emit(ctx, `✅ MISSION_COMPLETE ${ctx.completedAt - parseInt(ctx.missionId.split("-")[1])}ms`, auto);
+    }
+
+    // ---- DOX CLOSEOUT ----
+    if (cfg.doxAutoCloseout) {
+      doxCloseout({
+        projectDir: this.deps.directory,
+        slug,
+        missionId,
+        description,
+        startedAt: parseInt(missionId.split("-")[1]),
+        endedAt: Date.now(),
+        status: ctx.state === "completed" ? "completed" : "failed",
+        todos: ctx.todos.map((t) => ({ id: t.id, description: t.description, status: t.status })),
+        modelsUsed: [],
+        filesTouched: [],
+      });
+      this.emit(ctx, `DOX run archived: .opencode/DOX/${slug}.md`, auto);
     }
 
     this.saveMissionState(ctx);
