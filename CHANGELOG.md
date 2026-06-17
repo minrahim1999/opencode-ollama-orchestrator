@@ -4,6 +4,12 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-06-17
+
+### Added
+- **Clarification Gate** — Strategist now asks 1-2 concise questions when user requests are vague or missing details, BEFORE commissioning Architect. Prevents wasted planning cycles.
+- Strategist prompt updated: step 2 is now "If VAGUE → ask user, THEN WAIT. Do NOT proceed until clear."
+
 ## [2.0.0] - 2026-06-17
 
 ### Breaking Changes

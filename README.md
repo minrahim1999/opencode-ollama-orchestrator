@@ -251,7 +251,7 @@ That's it. No commands. But full agent customization is supported:
       "topP": 0.9,
       "maxTokens": 8192,
       "mode": "primary",
-      "description": "Auto-orchestrator — detects missions and drives pipeline",
+      "description": "Auto-orchestrator — detects missions, clarifies ambiguity, drives pipeline",
       "skills": ["dox-system"],
       "permission": {
         "read": "allow",
