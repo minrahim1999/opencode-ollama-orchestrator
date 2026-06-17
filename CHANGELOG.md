@@ -4,6 +4,15 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.16] - 2026-06-17
+
+### Added
+- **Mission resume across restarts** — `loadMissionsFromDisk()` reads `.opencode/missions/*/state.json` on startup, restoring missions in `executing`/`hold`/`retrying` state as `idle`. Survives OpenCode process restarts.
+- **Memory leak prevention** — `startMemoryPurge()` removes completed missions from in-memory Map after 1 hour. Periodic purge runs every hour.
+- **Graceful shutdown** — SIGTERM/SIGINT handlers: stops cleanup, waits for running tasks (30s timeout), saves active mission states, exits cleanly.
+- **Circuit breaker** — Tracks consecutive failures per model. After 5 failures, permanently skips the broken model and goes straight to fallback. Clears failure count when fallback succeeds.
+- **Running task tracking** — `executeTodos()` wraps `_executeTodosInner()` with `runningTasks` Map for graceful shutdown coordination.
+
 ## [2.1.15] - 2026-06-17
 
 ### Added

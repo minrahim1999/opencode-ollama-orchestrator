@@ -102,10 +102,16 @@ export class MissionController {
   private missions = new Map<string, MissionCtx>();
   private active = false;
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
+  private runningTasks = new Map<string, Promise<void>>();
+  private modelFailures = new Map<string, number>();
+  private brokenModels = new Set<string>();
 
   constructor(deps: EventHandlerDeps) {
     this.deps = deps;
+    this.loadMissionsFromDisk();
     this.startCleanup();
+    this.startMemoryPurge();
+    this.setupShutdownHandlers();
   }
 
   /** Start periodic cleanup of old mission directories */
@@ -156,6 +162,98 @@ export class MissionController {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
     }
+  }
+
+  /** Attempt to restore missions from disk */
+  private loadMissionsFromDisk(): void {
+    try {
+      const missionsDir = join(this.deps.directory, ".opencode", "missions");
+      if (!existsSync(missionsDir)) return;
+      const entries = readdirSync(missionsDir, { withFileTypes: true });
+      let restored = 0;
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const statePath = join(missionsDir, entry.name, "state.json");
+        if (!existsSync(statePath)) continue;
+        try {
+          const raw = readFileSync(statePath, "utf-8");
+          const data = JSON.parse(raw);
+          if (data.state === "executing" || data.state === "hold" || data.state === "retrying") {
+            const ctx: MissionCtx = {
+              missionId: data.missionId,
+              slug: data.slug,
+              description: data.description,
+              missionDir: join(missionsDir, entry.name),
+              state: "idle",
+              todos: data.todos || [],
+              retryCounts: new Map(),
+              completedAt: data.completedAt,
+              memory: data.memory || [],
+            };
+            this.missions.set(ctx.missionId, ctx);
+            restored++;
+          }
+        } catch {
+          // Skip corrupted state files
+        }
+      }
+      if (restored > 0) {
+        console.error(`[opencode-orchestrator] Restored ${restored} missions from disk`);
+      }
+    } catch {
+      // Ignore read errors
+    }
+  }
+
+  /** Periodically purge completed missions from memory */
+  private startMemoryPurge(): void {
+    const HOUR = 60 * 60 * 1000;
+    const purge = () => {
+      try {
+        const now = Date.now();
+        let purged = 0;
+        for (const [id, ctx] of Array.from(this.missions.entries())) {
+          if (ctx.completedAt && now - ctx.completedAt > HOUR) {
+            this.missions.delete(id);
+            purged++;
+          }
+        }
+        if (purged > 0) {
+          console.error(`[opencode-orchestrator] Purged ${purged} completed missions from memory`);
+        }
+      } catch {
+        // Ignore
+      }
+    };
+    purge();
+    setInterval(purge, HOUR);
+  }
+
+  /** Graceful shutdown: wait for tasks, save states, exit */
+  private setupShutdownHandlers(): void {
+    const shutdown = async (signal: string) => {
+      console.error(`[opencode-orchestrator] Received ${signal}, shutting down gracefully`);
+      this.stopCleanup();
+      // Wait for running tasks with 30s timeout
+      if (this.runningTasks.size > 0) {
+        const tasks = Array.from(this.runningTasks.values());
+        console.error(`[opencode-orchestrator] Waiting for ${tasks.length} running tasks...`);
+        try {
+          await Promise.race([
+            Promise.all(tasks),
+            new Promise((_r, reject) => setTimeout(() => reject(new Error("timeout")), 30000)),
+          ]);
+        } catch {
+          console.error("[opencode-orchestrator] Task drain timed out, saving state and exiting");
+        }
+      }
+      for (const ctx of this.missions.values()) {
+        if (!ctx.completedAt) this.saveMissionState(ctx);
+      }
+      process.exit(0);
+    };
+    process.once("SIGTERM", () => shutdown("SIGTERM"));
+    process.once("SIGINT", () => shutdown("SIGINT"));
   }
 
   /**
@@ -498,6 +596,14 @@ export class MissionController {
   /* ─── Private helpers ─── */
 
   private async executeTodos(ctx: MissionCtx, cfg: ReturnType<typeof loadOrchestratorConfig>, names: ReturnType<typeof loadOrchestratorConfig>["names"], auto: boolean) {
+    // Track this mission as running (for graceful shutdown)
+    const executePromise = this._executeTodosInner(ctx, cfg, names, auto)
+      .finally(() => this.runningTasks.delete(ctx.missionId));
+    this.runningTasks.set(ctx.missionId, executePromise);
+    return executePromise;
+  }
+
+  private async _executeTodosInner(ctx: MissionCtx, cfg: ReturnType<typeof loadOrchestratorConfig>, names: ReturnType<typeof loadOrchestratorConfig>["names"], auto: boolean) {
     // Create backup before executing any tasks
     if (!ctx.backup) {
       const backup = createBackup(this.deps.directory, ctx.slug);
@@ -819,20 +925,31 @@ export class MissionController {
     let session: { id: string } | null = null;
     let lastError: Error | null = null;
 
-    // Try primary model
-    if (modelObj) {
-      try {
-        const opts: any = {
-          directory: this.deps.directory,
-          title,
-          agent,
-          model: modelObj,
-        };
-        console.error(`[opencode-orchestrator] createSession for ${agent} with model ${modelObj.providerID}/${modelObj.modelID}`);
-        session = await this.deps.client.v2.session.create(opts);
-      } catch (err) {
-        lastError = err as Error;
-        console.error(`[opencode-orchestrator] createSession primary model failed: ${(err as Error).message}`);
+    const modelKey = modelObj ? `${modelObj.providerID}/${modelObj.modelID}` : "";
+    
+    // Check circuit breaker
+    const failures = this.modelFailures.get(modelKey) ?? 0;
+    if (failures >= 5) {
+      console.error(`[opencode-orchestrator] Circuit breaker OPEN for ${modelKey} (${failures} failures). Skipping to fallback.`);
+      this.brokenModels.add(modelKey);
+    } else {
+      // Try primary model
+      if (modelObj) {
+        try {
+          const opts: any = {
+            directory: this.deps.directory,
+            title,
+            agent,
+            model: modelObj,
+          };
+          console.error(`[opencode-orchestrator] createSession for ${agent} with model ${modelObj.providerID}/${modelObj.modelID}`);
+          session = await this.deps.client.v2.session.create(opts);
+        } catch (err) {
+          lastError = err as Error;
+          const failCount = (this.modelFailures.get(modelKey) ?? 0) + 1;
+          this.modelFailures.set(modelKey, failCount);
+          console.error(`[opencode-orchestrator] createSession primary model failed (${failCount}/5): ${(err as Error).message}`);
+        }
       }
     }
 
@@ -847,6 +964,8 @@ export class MissionController {
         };
         console.error(`[opencode-orchestrator] createSession for ${agent} with FALLBACK model ${fallbackModelObj.providerID}/${fallbackModelObj.modelID}`);
         session = await this.deps.client.v2.session.create(opts);
+        // Clear failure count since fallback succeeded
+        if (modelKey) this.modelFailures.set(modelKey, 0);
       } catch (err) {
         lastError = err as Error;
         console.error(`[opencode-orchestrator] createSession fallback model also failed: ${(err as Error).message}`);

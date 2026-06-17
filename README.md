@@ -566,6 +566,30 @@ Call the **revert_mission** tool with the mission slug to restore the pre-missio
 
 **Fix:** Upgrade to **v2.1.15+**. Mission directories older than 7 days are automatically cleaned up at startup and daily thereafter.
 
+### Mission lost after OpenCode restart
+
+**Symptom:** You restart OpenCode (or it crashes) and all active missions disappear. You have to start over.
+
+**Fix:** Upgrade to **v2.1.16+**. Missions in `executing`, `hold`, or `retrying` state are automatically restored from `.opencode/missions/*/state.json` on startup. The orchestrator reads the last saved state and brings the mission back as `idle` for you to resume.
+
+### Memory grows unbounded over time
+
+**Symptom:** Long-running OpenCode instances consume increasing memory as missions accumulate.
+
+**Fix:** Upgrade to **v2.1.16+**. Completed missions are purged from memory after 1 hour. Only active and recently-completed missions are kept in the Map.
+
+### SIGTERM kills missions mid-task, files corrupted
+
+**Symptom:** Restarting OpenCode while a mission is running leaves half-written files, broken git state, and no way to recover.
+
+**Fix:** Upgrade to **v2.1.16+**. SIGTERM/SIGINT handlers wait up to 30 seconds for running tasks to complete, then save all active mission states before exiting.
+
+### Model fails repeatedly, wastes tokens on retries
+
+**Symptom:** A model (e.g., a remote API) is down. The orchestrator keeps retrying, burning tokens and money.
+
+**Fix:** Upgrade to **v2.1.16+**. Circuit breaker tracks consecutive failures per model. After 5 failures, the model is permanently skipped and fallback is used immediately. Failure count resets when fallback succeeds.
+
 ---
 
 ## Built-in Agent Isolation
@@ -586,6 +610,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **2.1.16** | 2026-06-17 | Mission resume, memory purge, graceful shutdown, circuit breaker |
 | **2.1.15** | 2026-06-17 | Parallel execution, task failure isolation, mission memory, atomic writes, auto-cleanup |
 | **2.1.14** | 2026-06-17 | Pre-mission backup + revert_mission tool |
 | **2.1.13** | 2026-06-17 | Model fallback, session tracking, abort/skip/resume/watchdog tools |
