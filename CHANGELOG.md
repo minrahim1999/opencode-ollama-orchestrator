@@ -1,46 +1,48 @@
 # Changelog
 
-All notable changes to this project follow [Semantic Versioning](https://semver.org/).
+All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [2.0.0] - 2026-06-17
+
+### Breaking Changes
+- **Removed ALL slash commands** — `/task`, `/auto`, `/plan`, `/status`, `/agents`, `/delegate`, `/retry`, `/abort`, `/version` deleted. Plugin is now fully automatic.
+- **Primary agent reduced to ONE** — Only `strategist` is primary. Architect, Engineer, Auditor, Specialist are all subagents.
+- **API changes**: `ConfigHandlerDeps` no longer accepts `commands` key. `createConfigHandler` no longer registers any commands.
+
+### Added
+- **Natural language mission detection** — Strategist reads user messages and auto-starts missions via heuristic keyword matching
+- **Anti-stuck system** — 6 detectors: timeout, retry loop, circular deps, all-failed, stalled, resource-exhausted
+- **Diagnostic Specialist** — Activated automatically when stuck. Categories: TOO_BIG, UNCLEAR_SPEC, ENV_ISSUE, MODEL_LIMIT, BUGGY_CODE, EXTERNAL_BLOCK
+- **Loop counter** — Tracks same-error repetitions per task; stops brute-force at 3 failures
+- **Stall watcher** — Monitors `lastProgressAt`; auto-escalates to Specialist after 10 minutes no progress
+- **Dynamic worker throttling** — Drops from 3 to 1 worker when Ollama latency spikes detected
+- **Event handler intercepts `message.created`** — No command framework needed
+
+### Changed
+- **Config handler**: Removed all command registration logic. Only agents + orchestrator settings remain.
+- **Strategist prompt**: Rewritten for command-free automatic orchestration
+- **Architect prompt**: Instructs to write per-project `.opencode/plans/{slug}/plan.md` and `.opencode/todo/{slug}.md`
+- **Engineer prompt**: Token-efficient. Self-documenting code preferred. "If blocked after 2 attempts → report BLOCKED"
+- **Auditor prompt**: Only activates for `critical-path: yes` tasks. Non-critical tasks skip verification.
+- **Hard parallelism cap**: `maxParallelWorkers` clamped to `Math.min(userValue, 3)`. Cannot exceed 3 regardless of config.
+
+### Fixed
+- ESM output verified: zero `require()` calls in `dist/`
 
 ## [1.1.0] - 2026-06-17
 
 ### Added
 - **MissionController** — async state machine for fully automatic missions (`/auto` command)
-- **Per-project directories** — plans stored in `{project}/.opencode/plans/{slug}/`, todos in `{project}/.opencode/todo/{slug}.md`
-- **`/auto` command** — single command runs full pipeline: plan → execute → audit → complete
-- **Session polling** — `pollSession()` waits for LLM completion instead of blind sleep
-- **File-based plan watching** — `pollForFile()` detects when architect writes plan/todo files
-- **`/version` command** — shows plugin version
-- **14 vitest tests** — covering todo parser, constants, and path utilities
-- **Slugification** — mission directories named from description (kebab-case, max 50 chars)
-
-### Changed
-- **Event handler rewritten** — delegates to MissionController for all mission logic
-- **`/task` now runs manual mode** — pauses after planning, lets user review before `/auto` or `/plan`
-- **`/retry` now uses MissionController.resume()`** — continues from current state
-- **Agent prompts updated** — instruct agents to write to per-project directories
-- **Delegate tool** — runtime alias resolution (planner→architect, worker→engineer, etc.)
-
-### Fixed
-- Removed all `require()` calls — pure ESM output
-- `Map.values()` iterator fixed with `Array.from()` for TypeScript strict mode
-- Mission state type comparison cast to avoid TS2367
+- **Per-project directories** — plans in `.opencode/plans/{slug}/`, todos in `.opencode/todo/{slug}.md`
+- **Session polling** and **file watching**
+- **14 vitest tests**
 
 ## [1.0.0] - 2026-06-17
 
 ### Added
-- Initial release of `opencode-ollama-orchestrator`
-- Five configurable agent roles: Strategist, Architect, Engineer, Auditor, Specialist
-- Full config inheritance from `opencode.json`: model, fallbackModel, temperature, topP, topK, maxTokens, thinking, skills, permission, prompt, systemPrompt, color
-- Hard Ollama provider lock: validates at startup and every LLM request via `chat.params` hook
-- `/task`, `/plan`, `/agents`, `/status`, `/delegate`, `/retry`, `/abort` slash commands
-- `delegate_task` tool with Zod schema for spawning subagent sessions via SDK v2 APIs
-- Subagent depth limiting (default: 2 levels)
-- Max parallel workers control (default: 5)
-- Max retry control (default: 3)
-- Mission state tracking in `.opencode/missions/`
-- Plugin-level configuration in `opencode.json`
-- GitHub Actions CI (Node 20, 22) and auto-publish on release
-- Comprehensive TypeScript types for all configs
+- Initial release with `/task`, `/plan`, `/agents`, `/status`, `/delegate`, `/retry`, `/abort` commands
+- 5 agent roles: Strategist, Architect, Engineer, Auditor, Specialist
+- Ollama provider hard lock
+- Full config inheritance from opencode.json

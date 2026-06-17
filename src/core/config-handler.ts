@@ -1,6 +1,5 @@
 import { DEFAULT_AGENT_NAMES } from "../agents/index.js";
 import type { AgentPrompts } from "../agents/index.js";
-import type { CommandKey } from "../commands/index.js";
 import type { AgentNameConfig, InheritedAgentConfig, PluginConfig } from "../types.js";
 
 interface ConfigHandlerDeps {
@@ -64,7 +63,7 @@ export function createConfigHandler(deps: ConfigHandlerDeps) {
 
     const names = resolveAgentNames(pluginOpts?.agents);
 
-    // Register all 5 agents with full config inheritance
+    // Register ALL 5 agents — only Strategist is primary, rest are subagents
     const agentEntries: Array<[string, string, "primary" | "subagent"]> = [
       [names.strategist, deps.agents.STRATEGIST_PROMPT, "primary"],
       [names.architect, deps.agents.ARCHITECT_PROMPT, "subagent"],
@@ -79,35 +78,22 @@ export function createConfigHandler(deps: ConfigHandlerDeps) {
     }
 
     // Register orchestrator settings in config for runtime access
+    // HARD enforce maxParallelWorkers = 3 (Ollama Pro limit)
+    const userMaxParallel = pluginOpts.maxParallelWorkers;
+    const enforcedMaxParallel = userMaxParallel === undefined
+      ? 3
+      : Math.min(Math.max(1, userMaxParallel), 3);
+
     config.orchestrator = {
-      maxParallelWorkers: pluginOpts.maxParallelWorkers ?? 5,
-      maxRetries: pluginOpts.maxRetries ?? 3,
+      maxParallelWorkers: enforcedMaxParallel,  // NEVER exceeds 3
+      maxRetries: Math.min(pluginOpts.maxRetries ?? 3, 5),
       verbose: pluginOpts.verbose ?? false,
       requireApproval: pluginOpts.requireApproval ?? false,
-      maxSubagentDepth: pluginOpts.maxSubagentDepth ?? 2,
+      maxSubagentDepth: Math.min(pluginOpts.maxSubagentDepth ?? 2, 3),
       agentNames: names,
     };
 
-    // Register slash commands
-    const cmds: Array<{ name: CommandKey; description: string; agent: string }> = [
-      { name: "/task", description: "Start a new mission (manual)", agent: names.strategist },
-      { name: "/auto", description: "Start a fully automatic mission", agent: names.strategist },
-      { name: "/plan", description: "Generate/view plan", agent: names.architect },
-      { name: "/agents", description: "List active agents", agent: names.auditor },
-      { name: "/status", description: "Show mission status", agent: names.strategist },
-      { name: "/delegate", description: "Delegate task manually", agent: names.strategist },
-      { name: "/retry", description: "Retry failed tasks", agent: names.strategist },
-      { name: "/abort", description: "Abort mission", agent: names.strategist },
-      { name: "/version", description: "Show plugin version", agent: names.strategist },
-    ];
-
-    for (const cmd of cmds) {
-      const idx = config.commands.findIndex((c: any) => c.name === cmd.name);
-      if (idx >= 0) {
-        config.commands[idx] = { ...config.commands[idx], ...cmd };
-      } else {
-        config.commands.push(cmd);
-      }
-    }
+    // NO commands registered — plugin is fully automatic
+    // We intentionally do NOT register any slash commands
   };
 }

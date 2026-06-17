@@ -1,36 +1,163 @@
 # opencode-ollama-orchestrator
 
 <p align="center">
-  Multi-agent orchestrator for OpenCode — hard-locked to Ollama with full config inheritance.
+  Zero-command, fully automatic multi-agent orchestrator for OpenCode — Ollama-only.
 </p>
 
-<p align="center">
-  <img src="https://img.shields.io/npm/v/opencode-ollama-orchestrator.svg?style=flat-square" alt="npm version">
-  <img src="https://img.shields.io/badge/opencode-%3E%3D1.17.0-blue?style=flat-square" alt="OpenCode compat">
-  <img src="https://img.shields.io/badge/node-%3E%3D20-green?style=flat-square" alt="Node version">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square" alt="License"></a>
-</p>
+---
 
-## Why this exists
+## Philosophy
 
-The original `opencode-orchestrator` stomps your agent configs and ignores your model assignments. This replacement:
+**No commands. No slash. Just talk.**
 
-- **Preserves every setting** you define in `opencode.json` (model, temperature, thinking, skills, permission...)
-- **Hard-locks to Ollama** — rejects non-Ollama models at startup and at every inference call
-- **5 agent roles** with clear separation: Strategist, Architect, Engineer, Auditor, Specialist
-- **Customizable agent names** — rename them to whatever fits your workflow
-- **Subagent delegation** via SDK v2 session APIs with depth limiting
-- **7 slash commands**: `/task`, `/plan`, `/agents`, `/status`, `/delegate`, `/retry`, `/abort`
+Describe what you want. The Strategist decides if a mission is needed, commissions the Architect, dispatches Engineers in parallel, verifies critical work, and reports back. If anything gets stuck, the Specialist diagnoses and recovers automatically.
 
-## Install
+You never run `/task`, `/auto`, or anything. Just type naturally.
 
-```bash
-npm install -g opencode-ollama-orchestrator
+---
+
+## How It Works
+
+```
+User types: "Build a JWT auth system with refresh tokens"
+           |
+           v
+   ┌───────────────┐     Heuristic detection (keywords + length)
+   │  Strategist   │ ─── confirms this is a mission request
+   │  (PRIMARY)    │
+   └───────────────┘
+           |
+           | 1. Commission plan
+           v
+   ┌───────────────┐     Writes:
+   │   Architect   │ ─── .opencode/plans/{slug}/plan.md
+   │  (subagent)   │     .opencode/todo/{slug}.md
+   └───────────────┘
+           |
+           | 2. Wait for files
+           v
+   ┌───────────────────────────────────┐
+   │        DISPATCH LOOP               │
+   │                                    │
+   │  ┌─────────┐ ┌─────────┐ ┌─────────┐
+   │  │Engineer │ │Engineer │ │Engineer │  Max 3 parallel
+   │  │ #1      │ │ #2      │ │ #3      │  (Ollama Pro limit)
+   │  └────┬────┘ └────┬────┘ └────┬────┘
+   │       │           │           │
+   │       └────┬──────┴─────┬─────┘
+   │            v            v
+   │       ┌────────┐  ┌────────┐
+   │       │Auditor │  │Auditor │   Only critical-path tasks
+   │       │(CP #1) │  │(CP #2) │   Non-critical skips audit
+   │       └────┬───┘  └───┬────┘
+   │            │          │
+   │            v          v
+   │       ┌──────────────────┐
+   │       │  Loop detector   │   Same error ≥3 times?
+   │       │  Timeout watcher │   Stalled >10 min?
+   │       │  Resource guard  │   Queue full?
+   │       └────────┬─────────┘
+   │                │ YES → activate Specialist
+   │                v
+   │       ┌──────────────────┐
+   │       │   Specialist     │   Diagnose, recommend, recover
+   │       │  (subagent)      │   RETRY / REPLAN / SIMPLIFY
+   │       └──────────────────┘
+   │
+   └───────────────────────────────────┘
+           |
+           | 3. All done
+           v
+   ┌───────────────┐     Summarize to user
+   │  Strategist   │     Deliverables, issues, next steps
+   │  (PRIMARY)    │
+   └───────────────┘
 ```
 
-## Quick Start
+---
 
-Add to your `opencode.json`:
+## Agent Roles
+
+| Agent | Mode | Responsibility | Cost Optimizations |
+|-------|------|----------------|-------------------|
+| **Strategist** | `primary` | Detect missions, orchestrate flow, summarize results | Only lightweight analysis |
+| **Architect** | `subagent` | Write plans and todos | Runs once per mission |
+| **Engineer** | `subagent` | Implement code | Parallelized, non-interfering |
+| **Auditor** | `subagent` | Verify critical-path tasks | Only audits "critical-path: yes" |
+| **Specialist** | `subagent` | Diagnose stuck missions, recover | Activates only on failure |
+
+---
+
+## Anti-Stuck System
+
+The orchestrator watches every task in real time:
+
+| Detection | Threshold | Response |
+|-----------|-----------|----------|
+| **Task timeout** | > 10 minutes | Spawn Specialist to diagnose |
+| **Retry loop** | Same error ≥3 times | Escalate to Specialist, stop brute-force |
+| **Circular deps** | Task A → B → A | Detect before dispatch, abort with explanation |
+| **All failed** | 100% failure rate | Specialist proposes simplified scope |
+| **Stalled** | No progress > 10 min | Throttle workers, check Ollama health |
+| **Resource exhausted** | Latency spike > 30s | Drop to 1 worker temporarily |
+
+The Specialist uses a diagnostic protocol:
+```
+DIAGNOSIS: loop
+ROOT_CAUSE: Worker keeps generating invalid syntax for vite.config.ts
+RECOMMENDATION: retry_with_changes
+REQUIRED_ACTION: Use .mjs extension, avoid ESM/CJS mismatch
+CONFIDENCE: high
+```
+
+---
+
+## Parallelism: Hard 3-Worker Limit
+
+Ollama Pro supports **3 concurrent requests**. This is enforced at the config level:
+
+```javascript
+// In config-handler.ts
+const enforcedMaxParallel = Math.min(userSetting ?? 3, 3);
+```
+
+- **Default**: 3
+- **Maximum user override**: 3 (anything higher clamped)
+- **Dynamic throttling**: If resource exhaustion detected, temporarily drops to 1
+
+Workers are dispatched as:
+```
+Batch 1: TASK-001, TASK-002, TASK-003  ← 3 parallel
+Wait for completions...
+Batch 2: TASK-004, TASK-005, TASK-006  ← next 3
+```
+
+---
+
+## File Layout (Per-Project)
+
+Each mission gets its own directory:
+
+```
+{project}/
+├── .opencode/
+│   ├── plans/
+│   │   └── jwt-auth-system/           # Slugified mission name
+│   │       ├── plan.md                # Architect's full plan
+│   │       └── state.json             # Live mission state
+│   └── todo/
+│       └── jwt-auth-system.md         # Task list with checkboxes
+```
+
+---
+
+## Installation
+
+```bash
+npm install opencode-ollama-orchestrator
+```
+
+**opencode.json:**
 
 ```json
 {
@@ -42,139 +169,91 @@ Add to your `opencode.json`:
     "architect":  { "model": "ollama/deepseek-v4-flash", "temperature": 0.8 },
     "engineer":   { "model": "ollama/kimi-k2.7-code", "temperature": 0.2 },
     "auditor":    { "model": "ollama/kimi-k2.6", "temperature": 0.3 },
-    "specialist": { "model": "ollama/deepseek-v4-flash", "temperature": 0.5 }
+    "specialist": { "model": "ollama/deepseek-v4-flash", "temperature": 0.4 }
   }
 }
 ```
 
-Restart OpenCode. Done.
+That's it. No commands. No configuration beyond models.
 
-## Commands
+---
 
-| Command | Mode | Handler | Description |
-|---------|------|---------|-------------|
-| `/task "description"` | Manual | Strategist | Start mission, pause for review after planning |
-| `/auto "description"` | Automatic | Strategist | Full auto: plan → execute → audit → complete |
-| `/plan` | Manual | Architect | Regenerate or view plan |
-| `/status` | Both | Strategist | Show mission progress |
-| `/agents` | Both | Auditor | List active agents |
-| `/delegate` | Manual | Strategist | Manually delegate a task |
-| `/retry` | Both | Strategist | Retry failed tasks |
-| `/abort` | Both | Strategist | Abort all missions |
-| `/version` | Both | — | Show plugin version |
+## What Triggers a Mission
 
-### Manual vs Automatic
+The Strategist detects missions from natural language:
 
-**`/task`** — Planner creates `.opencode/plans/{slug}/plan.md` and `.opencode/todo/{slug}.md`, then pauses. You review the plan, then run `/auto` to continue.
+| Triggers | Does NOT trigger |
+|----------|------------------|
+| "Build auth system with JWT" | "ok" |
+| "Refactor payment module" | "thanks" |
+| "Convert this to TypeScript" | "haha" |
+| "Fix the bug in login" | "👍" |
+| "Help me set up Docker" | "cool" |
+| "Create a landing page" | "yes" |
 
-**`/auto`** — Runs the entire pipeline without stopping. Architect writes plan, Engineers execute all todos in dependency order, Auditor verifies critical path, Strategist reports completion.
+Messages shorter than 10 chars, system commands starting with `/`, and common acknowledgements are ignored.
 
-**File locations** (per-project):
-```
-{project}/
-├── .opencode/
-│   ├── plans/
-│   │   └── build-auth-system/          # Mission directory (slugified name)
-│   │       ├── plan.md                 # Architect's plan
-│   │       └── state.json              # Mission state
-│   └── todo/
-│       └── build-auth-system.md        # Todos for this mission
-```
+---
 
-## Full Config Reference
+## Cost Optimizations
 
-### Agent config (inherits everything)
+| Mechanism | Savings |
+|-----------|---------|
+| **Parallelism limited to 3** | No queue overflow, no timeouts |
+| **Auditor only on critical-path** | Skips ~60% of verification overhead |
+| **Token-efficient Engineer prompt** | Self-documenting code, minimal comments |
+| **No redundant planning** | Architect runs once per mission |
+| **Loop detection** | Stops brute-force retries |
+| **Dynamic worker throttling** | Reduces to 1 when Ollama stressed |
 
-Every field is optional. What's not set uses orchestrator defaults.
+---
 
-```json
-{
-  "agent": {
-    "strategist": {
-      "model": "ollama/deepseek-v4-pro",
-      "fallbackModel": "ollama/deepseek-v4-flash",
-      "temperature": 0.3,
-      "topP": 0.9,
-      "topK": 40,
-      "maxTokens": 8192,
-      "thinking": { "type": "enabled", "budgetTokens": 4000 },
-      "skills": ["project-analysis", "risk-assessment"],
-      "permission": "strict",
-      "prompt": "custom full prompt (replaces default)",
-      "systemPrompt": "prepended to default prompt",
-      "color": "#ff0000"
-    }
-  }
-}
-```
-
-### Plugin-level options
-
-```json
-{
-  "plugin": [
-    [
-      "opencode-ollama-orchestrator",
-      {
-        "agents": {
-          "strategist": "boss",
-          "architect": "planner",
-          "engineer": "coder",
-          "auditor": "qa",
-          "specialist": "expert"
-        },
-        "maxParallelWorkers": 5,
-        "maxRetries": 3,
-        "verbose": false,
-        "requireApproval": false,
-        "maxSubagentDepth": 2
-      }
-    ]
-  ]
-}
-```
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `agents` | `{}` | Rename any of the 5 roles |
-| `maxParallelWorkers` | `5` | Concurrent Engineer sessions |
-| `maxRetries` | `3` | Retries before escalation |
-| `verbose` | `false` | Extra mission logging |
-| `requireApproval` | `false` | Approve shell commands in subagents |
-| `maxSubagentDepth` | `2` | How deep Specialist chains can go |
-
-## Architecture
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed flow diagrams and state persistence.
-
-## Examples
-
-- [Minimal config](examples/minimal.json) — just agent models
-- [Advanced config](examples/advanced.json) — custom names, thinking mode, skills, fallbacks
-
-## Ollama Lock
-
-Three enforcement layers:
-
-1. **Startup**: Scans all agent configs; throws if any model isn't `ollama/*`
-2. **Session creation**: `delegate_task` validates before spawning subagents
-3. **Inference-time**: `chat.params` hook blocks every non-Ollama request
-
-Example error:
+## State Machine
 
 ```
-[ollama-orchestrator] Non-Ollama model blocked: "openai/gpt-4o".
-Only Ollama providers are supported.
+         idle
+           |
+           | user message detected
+           v
+   commissioning_plan  ──> Architect spawned
+           |
+           | plan files written
+           v
+     awaiting_plan  ──> pollForFile()
+           |
+           | todos parsed
+           v
+      dispatching  ──> group into batches of ≤3
+           |
+           v
+      executing  ──> poll each session
+           |
+           | all done
+           v
+      verifying  ──> Auditor on critical items
+           |
+           | pass
+           v
+      completed  ──> Strategist summary to user
+           |
+           +──> detecting  ──> Specialist
+           |    stuck/loop       diagnosis
+           |                        |
+           +────────────────────────┘ retry / replan / abort
 ```
 
-## Contributing
+---
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+## Roadmap
 
-## Changelog
+- [ ] Session status polling via SDK v2 status endpoint
+- [ ] WebSocket streaming for real-time progress
+- [ ] Metrics: token usage per mission, agent throughput
+- [ ] Adaptive temperature: raise on repeated failures
+- [ ] Agent swapping: route to different Ollama model on failure
 
-See [CHANGELOG.md](CHANGELOG.md).
+---
 
 ## License
 
-MIT
+MIT © 2026 muhaimin
