@@ -1,6 +1,6 @@
 {
   "name": "opencode-ollama-orchestrator",
-  "version": "2.1.3",
+  "version": "2.1.4",
   "description": "Multi-agent orchestrator for OpenCode, hard-locked to Ollama. Automatic mission mode with per-project plan/todo scoping.",
   "type": "module",
   "main": "dist/index.js",
