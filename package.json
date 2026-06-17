@@ -32,7 +32,7 @@
   "author": "muhaimin <muhaimin@example.com>",
   "repository": {
     "type": "git",
-    "url": "git@github.com:minrahim1999/opencode-ollama-orchestrator.git"
+    "url": "git+ssh://git@github.com/minrahim1999/opencode-ollama-orchestrator.git"
   },
   "bugs": {
     "url": "https://github.com/minrahim1999/opencode-ollama-orchestrator/issues"
