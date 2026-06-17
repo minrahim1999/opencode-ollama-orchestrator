@@ -4,6 +4,17 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.6] - 2026-06-17
+
+### Changed
+- **Provider lock removed** — Plugin no longer hard-locks to Ollama. Uses whatever model/provider is configured in `opencode.json`. If no model is set, falls back to the current active model. The plugin is now provider-agnostic.
+- **All "Ollama" references removed** — Agent prompts, DOX templates, config descriptions, and log prefixes updated from "Ollama Orchestrator" → "Multi-Agent Orchestrator" / "opencode-orchestrator".
+
+### Internal
+- `lockProviderToOllama()` is now a no-op that logs configured models but never throws. Kept for backward compat with external callers.
+- `chat.params` hook no longer blocks non-Ollama models; instead logs the resolved model for diagnostics.
+- `src/types.ts` JSDoc updated: model field no longer says "MUST start with ollama/".
+
 ## [2.1.5] - 2026-06-17
 
 ### Improved

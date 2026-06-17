@@ -60,7 +60,7 @@ export function doxInit(projectDir: string, slug: string): { runFile: string; do
 - **specialist**: Diagnostic subagent — unstuck recovery.
 
 ## Runtimes
-- Ollama Pro (max 3 concurrent workers)
+- Max 3 concurrent workers (adjustable via plugin config)
 - State persistence: .opencode/plans/ + .opencode/todo/ + .opencode/DOX/
 `,
       "utf-8"
@@ -77,7 +77,7 @@ export function doxInit(projectDir: string, slug: string): { runFile: string; do
 export function writeDoxRunHeader(env: DoxEnv) {
   const { runFile } = doxInit(env.projectDir, env.slug);
   const ts = new Date(env.startedAt).toISOString();
-  const header = `---\nmachine: opencode-ollama-orchestrator\ncommand: automatic-mission\nslug: ${env.slug}\nstarted_at: ${ts}\nstatus: in_progress\n---\n\n# ${env.description}\n\n## Models\n${env.modelsUsed.map((m) => `- ${m}`).join("\n")}\n\n## Tasks\n${env.todos.map((t) => `- [ ] ${t.id}: ${t.description}`).join("\n")}\n\n## Files Touched\n${env.filesTouched.map((f) => `- ${f}`).join("\n")}\n\n## Evidence Log\n\n`;
+  const header = `---\nmachine: opencode-orchestrator\ncommand: automatic-mission\nslug: ${env.slug}\nstarted_at: ${ts}\nstatus: in_progress\n---\n\n# ${env.description}\n\n## Models\n${env.modelsUsed.map((m) => `- ${m}`).join("\n")}\n\n## Tasks\n${env.todos.map((t) => `- [ ] ${t.id}: ${t.description}`).join("\n")}\n\n## Files Touched\n${env.filesTouched.map((f) => `- ${f}`).join("\n")}\n\n## Evidence Log\n\n`;
   writeFileSync(runFile, header, "utf-8");
 }
 

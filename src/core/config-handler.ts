@@ -185,7 +185,7 @@ function buildAgentConfig(
 ) {
   // 1. Orchestrator default base
   const defaults: AgentConfig = {
-    description: `${name} agent — Ollama Orchestrator ${role}`,
+    description: `${name} agent — Multi-Agent Orchestrator ${role}`,
     mode,
     prompt,
     maxTokens: 8192,
@@ -260,7 +260,7 @@ export function createConfigHandler(deps: ConfigHandlerDeps) {
     // Resolve plugin options from opencode.json
     // Validate plugin block is an array to prevent .find() crash
     if (!config.plugin || !Array.isArray(config.plugin)) {
-      console.warn("[opencode-ollama-orchestrator] Plugin config missing or not an array. Using defaults.");
+      console.warn("[opencode-orchestrator] Plugin config missing or not an array. Using defaults.");
       config.plugin = [];
     }
 
@@ -273,23 +273,23 @@ export function createConfigHandler(deps: ConfigHandlerDeps) {
     // Sanitize plugin options — crash protection
     let pluginOpts: PluginConfig = rawPluginBlock?.[1] ?? {};
     if (pluginOpts === null || typeof pluginOpts !== "object") {
-      console.warn("[opencode-ollama-orchestrator] Plugin options invalid. Using defaults.");
+      console.warn("[opencode-orchestrator] Plugin options invalid. Using defaults.");
       pluginOpts = {};
     }
     if (pluginOpts.agents !== undefined && (typeof pluginOpts.agents !== "object" || Array.isArray(pluginOpts.agents))) {
-      console.warn(`[opencode-ollama-orchestrator] agents must be an object, got ${typeof pluginOpts.agents}. Ignoring.`);
+      console.warn(`[opencode-orchestrator] agents must be an object, got ${typeof pluginOpts.agents}. Ignoring.`);
       pluginOpts.agents = undefined;
     }
     if (pluginOpts.maxRetries !== undefined && typeof pluginOpts.maxRetries !== "number") {
-      console.warn(`[opencode-ollama-orchestrator] maxRetries must be a number, got ${typeof pluginOpts.maxRetries}. Using default.`);
+      console.warn(`[opencode-orchestrator] maxRetries must be a number, got ${typeof pluginOpts.maxRetries}. Using default.`);
       pluginOpts.maxRetries = undefined;
     }
     if (pluginOpts.maxParallelWorkers !== undefined && typeof pluginOpts.maxParallelWorkers !== "number") {
-      console.warn(`[opencode-ollama-orchestrator] maxParallelWorkers must be a number, got ${typeof pluginOpts.maxParallelWorkers}. Using default.`);
+      console.warn(`[opencode-orchestrator] maxParallelWorkers must be a number, got ${typeof pluginOpts.maxParallelWorkers}. Using default.`);
       pluginOpts.maxParallelWorkers = undefined;
     }
     if (pluginOpts.maxSubagentDepth !== undefined && typeof pluginOpts.maxSubagentDepth !== "number") {
-      console.warn(`[opencode-ollama-orchestrator] maxSubagentDepth must be a number, got ${typeof pluginOpts.maxSubagentDepth}. Using default.`);
+      console.warn(`[opencode-orchestrator] maxSubagentDepth must be a number, got ${typeof pluginOpts.maxSubagentDepth}. Using default.`);
       pluginOpts.maxSubagentDepth = undefined;
     }
 
@@ -306,7 +306,7 @@ export function createConfigHandler(deps: ConfigHandlerDeps) {
     }
     if (Object.keys(renamed).length > 0) {
       console.warn(
-        `[opencode-ollama-orchestrator] Built-in agent name collision detected. Auto-renamed:\n` +
+        `[opencode-orchestrator] Built-in agent name collision detected. Auto-renamed:\n` +
           Object.entries(renamed)
             .map(([role, newName]) => `  ${role}: ${newName}`)
             .join("\n") +

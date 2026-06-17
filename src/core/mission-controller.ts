@@ -239,7 +239,7 @@ export class MissionController {
       this.missions.delete(ctx.missionId);
       return;
     }
-    console.error("[ollama-orchestrator] No resumable mission found.");
+    console.error("[opencode-orchestrator] No resumable mission found.");
   }
 
   /** Abort all active missions */
@@ -428,7 +428,7 @@ export class MissionController {
         if (result.passed === true) {
           return true;
         }
-        console.error(`[ollama-orchestrator] Audit ${todo.id} FAILED:`, result.issues?.join("; ") || "No details");
+        console.error(`[opencode-orchestrator] Audit ${todo.id} FAILED:`, result.issues?.join("; ") || "No details");
         return false;
       }
     } catch {
@@ -456,7 +456,7 @@ export class MissionController {
     }
 
     // Default permissive: if we can't determine, let it through
-    console.error(`[ollama-orchestrator] Audit ${todo.id}: no explicit result found, defaulting to pass.`);
+    console.error(`[opencode-orchestrator] Audit ${todo.id}: no explicit result found, defaulting to pass.`);
     return true;
   }
 
@@ -533,7 +533,7 @@ export class MissionController {
       const state = this.deps.sessions.get(sessionId);
       if (!state || !state.active) return;
     }
-    console.error(`[ollama-orchestrator] Session ${sessionId} poll timeout.`);
+    console.error(`[opencode-orchestrator] Session ${sessionId} poll timeout.`);
   }
 
   private async pollForFile(filePath: string): Promise<void> {
@@ -609,13 +609,13 @@ export class MissionController {
       writeFileSync(tmpPath, data, "utf-8");
       renameSync(tmpPath, path);
     } catch (err) {
-      console.error(`[ollama-orchestrator] Failed to save mission state:`, err);
+      console.error(`[opencode-orchestrator] Failed to save mission state:`, err);
     }
   }
 
   private emit(ctx: MissionCtx, message: string, auto: boolean) {
     const prefix = auto ? "[AUTO]" : "[MANUAL]";
-    const fullMsg = `[ollama-orchestrator] ${prefix}[${ctx.slug}] ${message}`;
+    const fullMsg = `[opencode-orchestrator] ${prefix}[${ctx.slug}] ${message}`;
     console.error(fullMsg);
 
     // Toast notification (best-effort, never blocks mission)

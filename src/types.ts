@@ -29,7 +29,7 @@ export interface AgentToolConfig {
  * is forwarded transparently. Nothing is dropped or hidden.
  */
 export interface AgentConfig {
-  /** Primary model (MUST start with "ollama/" when locked) */
+  /** Primary model (uses whatever provider the user configures) */
   model?: string;
 
   /** Fallback model if primary is unavailable or errors */

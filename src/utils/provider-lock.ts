@@ -30,31 +30,26 @@ function loadConfig(): OpencodeJson | null {
 }
 
 /**
- * Verify all configured models/providers are Ollama.
- * Only reads the config file — does NOT call SDK methods during init
- * to avoid blocking the plugin load.
+ * DEPRECATED: Provider lock is no longer enforced.
+ * The orchestrator respects whatever model/provider the user has configured
+ * in opencode.json. If no model is set, the currently active model is used.
+ *
+ * Kept as no-op for backward compatibility with any external callers.
  */
 export async function lockProviderToOllama(_client: any): Promise<void> {
   const cfg = loadConfig();
 
-  // Check default model
-  if (cfg?.model && !cfg.model.startsWith("ollama/")) {
-    throw new Error(
-      `[ollama-orchestrator] Default model is not Ollama: "${cfg.model}". Only Ollama models are allowed.`
-    );
-  }
+  // Log what the user has configured, but do NOT enforce Ollama
+  const defaultModel = cfg?.model ?? "(unset — will use current active model)";
+  console.error(`[opencode-orchestrator] Provider lock DISABLED. Using models from opencode.json:`);
+  console.error(`  default: ${defaultModel}`);
 
-  // Check agent-specific models from file only
   if (cfg?.agent) {
     for (const [name, agent] of Object.entries(cfg.agent)) {
       const m = (agent as any)?.model as string | undefined;
-      if (m && !m.startsWith("ollama/")) {
-        throw new Error(
-          `[ollama-orchestrator] Agent "${name}" uses non-Ollama model: "${m}". Only Ollama models are allowed.`
-        );
+      if (m) {
+        console.error(`  ${name}: ${m}`);
       }
     }
   }
-
-  console.error("[ollama-orchestrator] Ollama-only lock verified.");
 }

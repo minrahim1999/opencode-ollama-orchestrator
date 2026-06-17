@@ -28,7 +28,7 @@ export function createEventHandler(deps: EventHandlerDeps) {
         try {
           await controller.start(text, true); // always automatic
         } catch (err) {
-          console.error(`[ollama-orchestrator v${VERSION}] Mission start failed:`, err);
+          console.error(`[opencode-orchestrator v${VERSION}] Mission start failed:`, err);
         }
       }
       return event;

@@ -38,7 +38,7 @@ export function createDelegateTaskTool(deps: DelegateTaskDeps) {
       const supportedRoles = Object.values(cfg.names);
       if (!supportedRoles.includes(resolved)) {
         throw new Error(
-          `[ollama-orchestrator] Unsupported agent "${args.agent}" (resolved: "${resolved}"). ` +
+          `[opencode-orchestrator] Unsupported agent "${args.agent}" (resolved: "${resolved}"). ` +
           `Supported: ${supportedRoles.join(", ")}`
         );
       }
