@@ -79,60 +79,48 @@ You never run `/task`, `/auto`, or anything. Just type naturally.
 
 ## Architecture
 
-```
-User types: "Build a JWT auth system with refresh tokens"
-           |
-           v
-   ┌───────────────┐     Heuristic detection (confidence-scored)
-   │  Strategist   │ ─── confirms this is a mission request
-   │  (PRIMARY)    │
-   └───────────────┘
-           |
-           | 1. Commission plan
-           v
-   ┌───────────────┐     Writes:
-   │   Architect   │ ─── .opencode/plans/{slug}/plan.md
-   │  (subagent)   │     .opencode/todo/{slug}.md
-   └───────────────┘
-           |
-           | 2. Wait for files
-           v
-   ┌───────────────────────────────────┐
-   │        DISPATCH LOOP               │
-   │                                    │
-   │  ┌─────────┐ ┌─────────┐ ┌─────────┐
-   │  │Engineer │ │Engineer │ │Engineer │  Max 3 parallel
-   │  │ #1      │ │ #2      │ │ #3      │  (configurable)
-   │  └────┬────┘ └────┬────┘ └────┬────┘
-   │       │           │           │
-   │       └────┬──────┴─────┬─────┘
-   │            v            v
-   │       ┌────────┐  ┌────────┐
-   │       │Auditor │  │Auditor │   Only critical-path tasks
-   │       │(CP #1) │  │(CP #2) │   Non-critical skips audit
-   │       └────┬───┘  └───┬────┘
-   │            │          │
-   │            v          v
-   │       ┌──────────────────┐
-   │       │  Loop detector   │   Same error ≥3 times?
-   │       │  Timeout watcher │   Stalled >10 min?
-   │       │  Resource guard  │   Queue full?
-   │       └────────┬─────────┘
-   │                │ YES → activate Specialist
-   │                v
-   │       ┌──────────────────┐
-   │       │   Specialist     │   Diagnose, recommend, recover
-   │       │  (subagent)      │   RETRY / REPLAN / SIMPLIFY
-   │       └──────────────────┘
-   │
-   └───────────────────────────────────┘
-           |
-           | 3. All done
-           v
-   ┌───────────────┐     Summarize to user
-   │  Strategist   │     Deliverables, issues, next steps
-   │  (PRIMARY)    │
-   └───────────────┘
+```mermaid
+flowchart TD
+    User([User]) -->|"'Build a JWT auth system with refresh tokens'"| Strategist
+
+    Strategist -->|"Heuristic detection\n(confidence-scored)"| Decision{Mission request?}
+    Decision -->|"No"| Ignore["Ignore (casual chat)"]
+    Decision -->|"Yes"| Commission["1. Commission plan"]
+
+    Commission --> Architect
+    Architect -->|"Writes"| Plan[(.opencode/plans/{slug}/plan.md)]
+    Architect -->|"Writes"| Todo[(.opencode/todo/{slug}.md)]
+    Plan --> Dispatch
+    Todo --> Dispatch
+
+    subgraph DispatchLoop["2. Dispatch Loop"]
+        direction TB
+        Dispatch["Load todos"] --> Eng1["Engineer #1"]
+        Dispatch --> Eng2["Engineer #2"]
+        Dispatch --> Eng3["Engineer #3"]
+
+        Eng1 --> AuditCheck{Critical path?}
+        Eng2 --> AuditCheck
+        Eng3 --> AuditCheck
+
+        AuditCheck -->|"yes"| Audit1["Auditor (CP)"]
+        AuditCheck -->|"no"| Continue["Continue"]
+        Audit1 -->|"PASS/FAIL"| Continue
+
+        Continue --> Stuck{Stuck?
+        loop≥3 | timeout>10min}
+        Stuck -->|"Yes"| Specialist["Specialist\nRETRY / REPLAN / SIMPLIFY"]
+        Specialist --> Dispatch
+        Stuck -->|"No"| Done["Tasks complete"]
+    end
+
+    Done --> Summary["3. Summarize to user"]
+    Summary --> StrategistEnd["Strategist\nDeliverables, issues, next steps"]
+
+    style Strategist fill:#e1f5fe
+    style Architect fill:#f3e5f5
+    style Specialist fill:#fff3e0
+    style DispatchLoop fill:#fafafa,stroke-dasharray: 5 5
 ```
 
 ---
