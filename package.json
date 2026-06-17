@@ -1,6 +1,6 @@
 {
   "name": "opencode-ollama-orchestrator",
-  "version": "2.1.17",
+  "version": "2.1.18",
   "description": "Multi-agent orchestrator for OpenCode. Provider-agnostic — uses whatever model is configured per agent. Automatic mission mode with per-project plan/todo scoping.",
   "type": "module",
   "main": "dist/index.js",
@@ -43,6 +43,7 @@
     "@opencode-ai/sdk": ">=1.17.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.0",
     "@opencode-ai/plugin": "^1.17.7",
     "@opencode-ai/sdk": "^1.17.7",
     "@types/node": "^22.19.21",
@@ -54,7 +55,8 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "lint": "echo 'Lint: add eslint or biome when ready'",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "prepublishOnly": "npm run clean && npm run build"

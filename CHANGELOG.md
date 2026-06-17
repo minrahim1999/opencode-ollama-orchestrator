@@ -4,6 +4,34 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.18] - 2026-06-17
+
+### Added
+- **Operating Modes** — `slow` (default) vs `fast` runtime mode selector.
+  - `slow`: Current behavior — multi-agent, parallel, phase gates, full quality.
+  - `fast`: Autonomous 24/7 — single-worker, no human gates, aggressive timeouts.
+- **Hallucination Guard** — `src/core/hallucination-guard.ts`. Validates every agent write for file existence, evidence citation, confidence threshold. Rejects, revises, or escalates suspicious outputs. Mandatory in fast mode.
+- **Token Budget Manager** — `src/core/token-budget.ts`. Per-task token ceiling + rolling context window with auto-summarize trigger at 80% fill. Hard stop when total budget exhausted.
+- **Fast Mode Controller** — `src/core/fast-mode.ts`. Serial mission queue, watcher loop (5s interval), mission-level timeout, structured notifications.
+- **Mode config** — `fastMode` block in `opencode.json`: `mode`, `confidenceThreshold`, `maxTokensPerTask`, `contextWindowBudget`, `enableFastTrack`, `fastModels`.
+- **Fast-track detection** — Keyword-based detection (fix, bug, test, refactor, lint, typo) routes quick tasks straight to fast execution.
+- **New tools**:
+  - `fast_run` — queue a mission for fast-mode execution
+  - `set_orchestrator_mode` — record mode switch request
+- **Biome linting** — replaced placeholder `echo` with real `biome check`. CI now fails on lint errors.
+
+### Changed
+- `loadOrchestratorConfig()` now parses `fastMode` from plugin options and exposes `mode` + `fastMode`.
+- CI `lint` step no longer `continue-on-error: true`.
+
+### Tests
+- Added `test/mode.test.ts` — mode resolution, fast-track detection, clamping
+- Added `test/hallucination-guard.test.ts` — evidence extraction, validation, guard instructions
+- Added `test/token-budget.test.ts` — budget tracking, exhaustion, summarize, estimation
+- Added `test/fast-mode.test.ts` — queue, serial execution, token pause, resume
+- Added `test/ratelimiter.test.ts` — TokenBucket burst, refill, waitForTokens
+- Added `test/backup.test.ts` — directory snapshot, revert, exclusions, cleanup
+
 ## [2.1.17] - 2026-06-17
 
 ### Added

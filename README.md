@@ -71,9 +71,42 @@ You never run `/task`, `/auto`, or anything. Just type naturally.
 | **Critical-path auditing** | Auditor verifies only mission-critical tasks. ~60% of tasks skip audit for speed. |
 | **Anti-stuck system** | Loop detection, timeout watchdog, and Specialist auto-recovery. |
 | **Phase gates** | Optional user-controlled pauses between multi-phase plans for review. |
-| **State persistence** | Mission state survives conversation compaction via filesystem storage. |
-| **DOX integration** | Auto-generates timestamped run records and maintains `AGENTS.md`. |
-| **Built-in isolation** | Auto-detects name collisions with OpenCode's built-in agents and renames safely. |
+|| **State persistence** | Mission state survives conversation compaction via filesystem storage. |
+|| **DOX integration** | Auto-generates timestamped run records and maintains `AGENTS.md`. |
+|| **Built-in isolation** | Auto-detects name collisions with OpenCode's built-in agents and renames safely. |
+
+### Operating Modes
+
+| Mode | Best for | Workers | Phase Gates | Human Approval | Hallucination Guard | Token Budget |
+|------|----------|---------|-------------|----------------|---------------------|--------------|
+| **Slow** (default) | Complex features, architecture changes, full mission pipeline | 3 | Yes | Optional | Off | Unbounded |
+| **Fast** | Bug fixes, tests, refactors, linting, docs — run 24/7 autonomously | 1 | No | None | **Pre-write audit** | **Hard ceiling** |
+
+In **Fast Mode** the orchestrator:
+- Runs a **watcher loop** that polls for new missions every 5s
+- Uses **single-worker execution** (serial, predictable)
+- Enforces a **hallucination guard** — every write is validated for file existence, evidence citation, and confidence threshold
+- Enforces a **token budget manager** — per-task ceiling + context-window cap with auto-summarize
+- Uses **aggressive timeout** (2 min task / 10 min mission)
+- Emits **structured JSON logging** and notifications on completion/failure
+- Supports **fast-track detection** — quick tasks ("fix typo", "add test", "refactor") skip the full pipeline and run directly
+
+Enable Fast Mode in your config:
+
+```json
+{
+  "plugin": [
+    ["opencode-ollama-orchestrator", {
+      "fastMode": {
+        "mode": "fast",
+        "confidenceThreshold": 0.75,
+        "maxTokensPerTask": 4096,
+        "enableFastTrack": true
+      }
+    }]
+  ]
+}
+```
 
 ---
 
