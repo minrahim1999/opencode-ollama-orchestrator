@@ -1,0 +1,49 @@
+{
+  "name": "opencode-ollama-orchestrator",
+  "version": "1.0.0",
+  "description": "Multi-agent orchestrator for OpenCode, hard-locked to Ollama providers. Supports /task, /plan, delegate_task with Commander/Planner/Worker/Reviewer agents.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "opencode-plugin",
+    "opencode",
+    "ollama",
+    "orchestrator",
+    "multi-agent"
+  ],
+  "license": "MIT",
+  "author": "muhaimin",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/muhaimin/opencode-ollama-orchestrator"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.17.0",
+    "@opencode-ai/sdk": ">=1.17.0"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.17.7",
+    "@opencode-ai/sdk": "^1.17.7",
+    "@types/node": "^22.19.21",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
