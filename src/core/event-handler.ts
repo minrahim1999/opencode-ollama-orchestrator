@@ -66,6 +66,7 @@ export function looksLikeTaskRequest(text: string): boolean {
     "write", "generate", "convert", "migrate", "setup", "configure",
     "deploy", "integrate", "develop", "design", "optimize", "test",
     "update", "upgrade", "remove", "delete", "change", "modify",
+    "check", "compare", "review", "audit", "sync", "align",
     "code:", "todo:", "mission:", "plan:", "feature:", "bug:",
     "need to", "want to", "should we", "let's", "lets",
   ];
