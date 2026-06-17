@@ -4,6 +4,15 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.7] - 2026-06-17
+
+### Added
+- **131 tests** via Vitest covering all core modules: config-handler, event-handler, provider-lock, todo-parser, dox, constants, paths.
+- Test directory (`test/`) and `vitest.config.ts` now shipped in the npm tarball so consumers can run tests.
+
+### Fixed
+- package.json: updated description to "provider-agnostic"; removed "ollama-only" keywords.
+
 ## [2.1.6] - 2026-06-17
 
 ### Changed

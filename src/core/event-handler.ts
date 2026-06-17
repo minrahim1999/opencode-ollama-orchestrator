@@ -38,8 +38,8 @@ export function createEventHandler(deps: EventHandlerDeps) {
   };
 }
 
-/** Heuristic: what counts as a task request vs casual chat */
-function looksLikeTaskRequest(text: string): boolean {
+/** Exported for testing. Heuristic: what counts as a task request vs casual chat */
+export function looksLikeTaskRequest(text: string): boolean {
   const lower = text.toLowerCase().trim();
 
   // Fast reject: meta commands, very short, or explicit non-task prefixes
@@ -76,7 +76,8 @@ function looksLikeTaskRequest(text: string): boolean {
   return hasStrongKeyword || (!hasWeakSignal && strongKeywords.some((kw) => lower.includes(kw)));
 }
 
-function shouldIgnore(text: string): boolean {
+/** Exported for testing. */
+export function shouldIgnore(text: string): boolean {
   const lower = text.toLowerCase().trim();
   const ignored = ["ok", "thanks", "thank you", "got it", "nice", "cool", "lol", "haha", "👍", "✅"];
   return ignored.includes(lower) || text.length < 10;

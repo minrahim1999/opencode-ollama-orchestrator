@@ -1,7 +1,7 @@
 {
   "name": "opencode-ollama-orchestrator",
   "version": "2.1.6",
-  "description": "Multi-agent orchestrator for OpenCode, hard-locked to Ollama. Automatic mission mode with per-project plan/todo scoping.",
+  "description": "Multi-agent orchestrator for OpenCode. Provider-agnostic — uses whatever model is configured per agent. Automatic mission mode with per-project plan/todo scoping.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -13,6 +13,8 @@
   },
   "files": [
     "dist",
+    "test",
+    "vitest.config.ts",
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
@@ -22,11 +24,9 @@
   "keywords": [
     "opencode-plugin",
     "opencode",
-    "ollama",
     "orchestrator",
     "multi-agent",
-    "subagent",
-    "ollama-only"
+    "subagent"
   ],
   "license": "MIT",
   "author": "muhaimin <muhaimin@example.com>",
