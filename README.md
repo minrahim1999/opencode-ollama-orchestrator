@@ -475,6 +475,21 @@ This is expected behavior. The plugin auto-renames orchestrator agents that conf
 
 The plugin uses atomic writes (write to `.tmp` then rename). If you see corruption, it's likely from a hard crash during a non-atomic external write. Delete the affected `.opencode/plans/{slug}/state.json` and the mission will start fresh.
 
+### Subagent shows "explorer" instead of configured agent
+
+**Symptom:** In auto-pipeline mode, subagent sessions show as built-in `explorer` or `general` with the global default model, ignoring `agent.architect.model`, `agent.engineer.model`, etc.
+
+**Fix:** Upgrade to **v2.1.11+**. Before v2.1.11, `MissionController.createSession()` did not pass `agent` or `model` to OpenCode SDK, so it fell back to built-in defaults. With v2.1.11+, the auto-pipeline resolves per-agent models from your `opencode.json` and logs:
+```
+[opencode-orchestrator] createSession for engineer with model ollama/kimi-k2.7-code
+```
+
+### Todo updates not visible / tasks re-run on resume
+
+**Symptom:** Tasks complete and logs say "TASK-NNN completed", but the todo file still shows `[ ]` unchecked. Resuming the mission re-runs already-done tasks.
+
+**Fix:** Upgrade to **v2.1.11+**. Before v2.1.11, `updateTodoStatus()` hardcoded `.opencode/todos.md` while the architect wrote to `.opencode/todo/{slug}.md`. Updates went to the wrong file. With v2.1.11+, `findTodoFile()` discovers the actual todo file automatically, and `buildTaskPrompt()` tells subagents exactly which file to update.
+
 ---
 
 ## Built-in Agent Isolation
@@ -495,6 +510,9 @@ See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **2.1.11** | 2026-06-17 | Auto-pipeline model routing + todo file path discovery fixes |
+| **2.1.10** | 2026-06-17 | Strategist communication modes (ASK/RECOMMEND/ANSWER) |
+| **2.1.9** | 2026-06-17 | Per-agent model resolution in `delegate-task` tool |
 | **2.1.7** | 2026-06-17 | 131 tests added, shipped in npm tarball |
 | **2.1.6** | 2026-06-17 | Provider lock removed — now provider-agnostic |
 | **2.1.5** | 2026-06-17 | Regex robustness, config validation, atomic writes |

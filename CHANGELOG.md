@@ -4,6 +4,19 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.11] - 2026-06-17
+
+### Fixed
+- **Auto-pipeline per-agent model routing** — `MissionController.createSession()` and `promptSession()` now read per-agent `model` from `~/.config/opencode/opencode.json` and pass both `agent` and `model` to OpenCode SDK. Previously, the auto-pipeline (planning → execution → audit) silently fell back to the built-in "explorer" agent with the global default model, ignoring user-configured per-agent assignments.
+  - `createSession()` resolves model → logs: `[opencode-orchestrator] createSession for {agent} with model {provider}/{modelID}`
+  - `promptSession()` resolves model → logs: `[opencode-orchestrator] promptSession for {agent} with model {provider}/{modelID}`
+- **Todo file path discovery** — `updateTodoStatus()` no longer hardcodes `.opencode/todos.md`. Added `findTodoFile()` utility that discovers the actual todo file by checking:
+  1. Mission-specific `.opencode/todo/{slug}.md` (where architect writes the plan)
+  2. Any `.md` in `.opencode/todo/` directory
+  3. Falls back to generic `.opencode/todos.md`
+  This fixes the symptom where tasks appeared completed in logs but the todo file never updated, so resuming a mission re-ran already-done tasks.
+- **`buildTaskPrompt()` awareness** — Task prompt now includes the exact todo file path and instructions to update the checkbox after completion, so subagents can self-report progress.
+
 ## [2.1.10] - 2026-06-17
 
 ### Fixed
