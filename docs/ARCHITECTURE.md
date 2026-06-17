@@ -12,8 +12,8 @@ flowchart TD
     Strategist -->|"if clear"| Mission["Auto-create mission"]
     Mission --> Architect
 
-    Architect -->|"writes .opencode/plans/{slug}/plan.md"| Plan[(Plan File)]
-    Architect -->|"writes .opencode/todo/{slug}.md"| Todo[(Todo File)]
+    Architect -->|"writes .opencode/plans/__slug__/plan.md"| Plan[(Plan File)]
+    Architect -->|"writes .opencode/todo/__slug__.md"| Todo[(Todo File)]
     Plan --> Engineers
     Todo --> Engineers
 

@@ -88,8 +88,8 @@ flowchart TD
     Decision -->|"Yes"| Commission["1. Commission plan"]
 
     Commission --> Architect
-    Architect -->|"Writes"| Plan[(.opencode/plans/{slug}/plan.md)]
-    Architect -->|"Writes"| Todo[(.opencode/todo/{slug}.md)]
+    Architect -->|"Writes"| Plan[(".opencode/plans/__slug__/plan.md")]
+    Architect -->|"Writes"| Todo[(".opencode/todo/__slug__.md")]
     Plan --> Dispatch
     Todo --> Dispatch
 
@@ -107,8 +107,7 @@ flowchart TD
         AuditCheck -->|"no"| Continue["Continue"]
         Audit1 -->|"PASS/FAIL"| Continue
 
-        Continue --> Stuck{Stuck?
-        loop≥3 | timeout>10min}
+        Continue --> Stuck{Stuck?\nloop≥3 or timeout>10min}
         Stuck -->|"Yes"| Specialist["Specialist\nRETRY / REPLAN / SIMPLIFY"]
         Specialist --> Dispatch
         Stuck -->|"No"| Done["Tasks complete"]
