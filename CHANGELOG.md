@@ -4,6 +4,22 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.9] - 2026-06-17
+
+### Fixed
+- **Per-agent model resolution** — `delegate-task` tool now reads each agent's `model` from `opencode.json` and passes it explicitly to `session.create()`. Previously, subagent sessions silently inherited the parent (strategist) model or fell back to the global default, ignoring per-agent model assignments.
+  - Agent-level model (e.g., `agent.engineer.model`) is used when set.
+  - Falls back to global `model` when agent-level is absent.
+  - Logs resolved model to stderr: `[opencode-orchestrator] Delegating to {role} with model {provider}/{modelID}`.
+
+### Added
+- **Test coverage** — `test/delegate-task.test.ts` (6 tests) covering model resolution, fallback, multi-slash model IDs, and parent session passthrough.
+
+## [2.1.8] - 2026-06-17
+
+### Fixed
+- README updated with full guide: quick start, configuration reference, architecture diagram, troubleshooting, testing, changelog.
+
 ## [2.1.7] - 2026-06-17
 
 ### Added
