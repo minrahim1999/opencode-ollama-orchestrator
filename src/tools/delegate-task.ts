@@ -1,4 +1,6 @@
 import { tool } from "@opencode-ai/plugin";
+import { loadOrchestratorConfig } from "../utils/constants.js";
+import type { ResolvedNames } from "../utils/constants.js";
 
 interface DelegateTaskDeps {
   client: any;
@@ -6,26 +8,45 @@ interface DelegateTaskDeps {
   sessions: Map<string, { active: boolean; step: number }>;
 }
 
+/** Resolve generic agent names to configured names at runtime */
+function resolveAgentAlias(agent: string, names: ResolvedNames): string {
+  const aliases: Record<string, keyof ResolvedNames> = {
+    "planner": "architect",
+    "worker": "engineer",
+    "reviewer": "auditor",
+    "expert": "specialist",
+    "commander": "strategist",
+  };
+
+  const role = aliases[agent.toLowerCase()] ?? (Object.keys(names).includes(agent) ? agent as keyof ResolvedNames : null);
+  if (!role) return agent; // Pass through as-is if unrecognized
+  return names[role];
+}
+
 export function createDelegateTaskTool(deps: DelegateTaskDeps) {
   return tool({
-    description: "Delegate a subtask to a dedicated agent session (planner, worker, or reviewer).",
+    description: "Delegate a subtask to a dedicated agent session (architect, engineer, auditor, specialist, or strategist).",
     args: {
-      agent: tool.schema.string().describe("Target agent: planner | worker | reviewer"),
+      agent: tool.schema.string().describe("Target agent alias: planner|worker|reviewer|expert|commander or custom configured name"),
       task: tool.schema.string().describe("Full task description with context"),
       parentSessionID: tool.schema.string().optional().describe("Parent mission session ID"),
     },
-    async execute(args, ctx) {
-      const supported = ["planner", "worker", "reviewer"];
-      if (!supported.includes(args.agent)) {
+    async execute(args) {
+      const cfg = loadOrchestratorConfig(deps.directory);
+      const resolved = resolveAgentAlias(args.agent, cfg.names);
+
+      const supportedRoles = Object.values(cfg.names);
+      if (!supportedRoles.includes(resolved)) {
         throw new Error(
-          `[ollama-orchestrator] Unsupported agent "${args.agent}". Use: ${supported.join(", ")}`
+          `[ollama-orchestrator] Unsupported agent "${args.agent}" (resolved: "${resolved}"). ` +
+          `Supported: ${supportedRoles.join(", ")}`
         );
       }
 
       const session = await deps.client.v2.session.create({
         directory: deps.directory,
-        title: `${args.agent}: ${args.task.slice(0, 50)}`,
-        agent: args.agent,
+        title: `${resolved}: ${args.task.slice(0, 50)}`,
+        agent: resolved,
         ...(args.parentSessionID ? { parentID: args.parentSessionID } : {}),
       });
 
@@ -37,7 +58,7 @@ export function createDelegateTaskTool(deps: DelegateTaskDeps) {
         parts: [{ type: "text", text: args.task }],
       });
 
-      return `Delegated to ${args.agent}. Session: ${session.id}`;
+      return `Delegated to ${resolved} (alias: ${args.agent}). Session: ${session.id}`;
     },
   });
 }

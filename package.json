@@ -29,7 +29,7 @@
     "ollama-only"
   ],
   "license": "MIT",
-  "author": "muhaimin \u003cmuhaimin@example.com\u003e",
+  "author": "muhaimin <muhaimin@example.com>",
   "repository": {
     "type": "git",
     "url": "git@github.com:minrahim1999/opencode-ollama-orchestrator.git"
@@ -39,23 +39,27 @@
   },
   "homepage": "https://github.com/minrahim1999/opencode-ollama-orchestrator#readme",
   "peerDependencies": {
-    "@opencode-ai/plugin": "\u003e=1.17.0",
-    "@opencode-ai/sdk": "\u003e=1.17.0"
+    "@opencode-ai/plugin": ">=1.17.0",
+    "@opencode-ai/sdk": ">=1.17.0"
   },
   "devDependencies": {
     "@opencode-ai/plugin": "^1.17.7",
     "@opencode-ai/sdk": "^1.17.7",
     "@types/node": "^22.19.21",
-    "typescript": "^5.9.3"
+    "@vitest/coverage-v8": "^4.1.9",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9"
   },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
     "lint": "echo 'Lint: add eslint or biome when ready'",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "prepublishOnly": "npm run clean \u0026\u0026 npm run build"
   },
   "engines": {
-    "node": "\u003e=20"
+    "node": ">=20"
   }
 }
