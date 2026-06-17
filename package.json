@@ -1,6 +1,6 @@
 {
   "name": "opencode-ollama-orchestrator",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Multi-agent orchestrator for OpenCode, hard-locked to Ollama. Automatic mission mode with per-project plan/todo scoping.",
   "type": "module",
   "main": "dist/index.js",
@@ -57,7 +57,7 @@
     "lint": "echo 'Lint: add eslint or biome when ready'",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "prepublishOnly": "npm run clean \u0026\u0026 npm run build"
+    "prepublishOnly": "npm run clean && npm run build"
   },
   "engines": {
     "node": ">=20"
