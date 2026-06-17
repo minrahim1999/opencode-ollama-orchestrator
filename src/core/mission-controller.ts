@@ -114,7 +114,7 @@ export class MissionController {
 
     const archSession = await this.createSession(names.architect, `Plan: ${slug}`);
 
-    await this.promptSession(archSession.id, [
+    await this.promptSession(archSession.id, names.architect, [
       `Create a detailed plan for: ${description}`,
       "",
       `Write the plan to ${missionDir}/plan.md`,
@@ -285,7 +285,7 @@ export class MissionController {
 
       try {
         const session = await this.createSession(resolvedAgent, `${todo.id}: ${todo.description.slice(0, 40)}`);
-        await this.promptSession(session.id, this.buildTaskPrompt(todo, cfg, names));
+        await this.promptSession(session.id, resolvedAgent, this.buildTaskPrompt(todo, cfg, names));
 
         if (auto) {
           await this.pollSession(session.id);
@@ -332,7 +332,7 @@ export class MissionController {
 
   private async runAudit(todo: ParsedTodo, auditorName: string) {
     const session = await this.createSession(auditorName, `Audit: ${todo.id}`);
-    await this.promptSession(session.id, [
+    await this.promptSession(session.id, auditorName, [
       `Audit task: ${todo.id}`,
       todo.description,
       "",
@@ -366,17 +366,22 @@ export class MissionController {
   }
 
   private async createSession(agent: string, title: string): Promise<{ id: string }> {
-    return this.deps.client.v2.session.create({
+    const session = await this.deps.client.v2.session.create({
       directory: this.deps.directory,
       title,
-      agent,
     });
+    // Store agent mapping for prompt calls
+    if (session.id) {
+      (session as any)._agent = agent;
+    }
+    return session;
   }
 
-  private async promptSession(sessionID: string, text: string): Promise<void> {
+  private async promptSession(sessionID: string, agent: string, text: string): Promise<void> {
     await this.deps.client.v2.session.prompt({
       sessionID: sessionID,
       directory: this.deps.directory,
+      agent,
       parts: [{ type: "text", text }],
     });
   }
@@ -462,7 +467,40 @@ export class MissionController {
 
   private emit(ctx: MissionCtx, message: string, auto: boolean) {
     const prefix = auto ? "[AUTO]" : "[MANUAL]";
-    console.error(`[ollama-orchestrator] ${prefix}[${ctx.slug}] ${message}`);
+    const fullMsg = `[ollama-orchestrator] ${prefix}[${ctx.slug}] ${message}`;
+    console.error(fullMsg);
+
+    // Toast notification (best-effort, never blocks mission)
+    try {
+      const client = this.deps.client;
+      if (client?.tui?.showToast) {
+        // Map message prefix to toast variant
+        let variant: "info" | "success" | "warning" | "error" = "info";
+        if (message.includes("✅") || message.includes("completed") || message.includes("COMPLETE")) {
+          variant = "success";
+        } else if (message.includes("failed") || message.includes("FAIL") || message.includes("error")) {
+          variant = "error";
+        } else if (message.includes("retrying") || message.includes("stuck") || message.includes("timeout")) {
+          variant = "warning";
+        } else if (message.includes("⛔ PHASE_GATE")) {
+          variant = "warning";
+        }
+
+        // Fire-and-forget toast
+        client.tui.showToast({
+          body: {
+            title: ctx.slug,
+            message: message.slice(0, 200), // truncate to avoid overflow
+            variant,
+            duration: variant === "error" || variant === "warning" ? 8000 : 5000,
+          },
+        }).catch(() => {
+          // Silently ignore toast errors (TUI may not be running)
+        });
+      }
+    } catch {
+      // Toast is cosmetic — never block mission on notification failure
+    }
   }
 }
 
