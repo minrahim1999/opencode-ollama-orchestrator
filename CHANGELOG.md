@@ -4,6 +4,19 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-06-17
+
+### Fixed
+- **Agent model switching broken** — `SessionCreateData` has no `agent` field; `agent` is only valid in `SessionPromptData`. Previously all subagent sessions silently ran as the default model (strategist's deepseek-v4-pro). Now each role correctly uses its own model: architect=gemini-3-flash-preview, engineer=kimi-k2.7-code, auditor=kimi-k2.6, specialist=kimi-k2.6.
+
+### Added
+- **Toast notifications** — `emit()` now calls `client.tui.showToast()` for visual feedback on mission progress, phase gates, completions, and failures. Maps message content to variants: success (complete), warning (retry/stuck/phase-gate), error (failure), info (everything else). Fire-and-forget: never blocks mission execution.
+
+## [2.1.1] - 2026-06-17
+
+### Fixed
+- **Plugin init hang** — `lockProviderToOllama()` called `client.config.get()` during plugin initialization, which blocks indefinitely when the SDK client isn't fully ready. Now reads agent models directly from the config file instead of via SDK call.
+
 ## [2.1.0] - 2026-06-17
 
 ### Added
