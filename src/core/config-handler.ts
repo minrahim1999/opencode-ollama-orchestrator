@@ -53,6 +53,16 @@ export function createConfigHandler(deps: ConfigHandlerDeps) {
     if (!config.agent) config.agent = {};
     if (!config.commands) config.commands = [];
 
+    // CRITICAL: Preserve built-in agents — never overwrite or disable them.
+    // These keys belong to OpenCode core subagents, not this plugin:
+    const BUILTIN_AGENT_KEYS = new Set([
+      "compaction",
+      "explorer",
+      "worker",
+      "executor",
+      "debugger",
+    ]);
+
     // Resolve orchestrator-level plugin options from opencode.json
     const pluginOpts: PluginConfig =
       config.plugin?.find?.(
@@ -62,6 +72,27 @@ export function createConfigHandler(deps: ConfigHandlerDeps) {
       )?.[1] ?? {};
 
     const names = resolveAgentNames(pluginOpts?.agents);
+
+    // Safety: if any orchestrator agent name collides with a built-in, auto-rename
+    // and log a warning so the user knows. This keeps built-in functionality intact.
+    const renamed: Record<string, string> = {};
+    for (const [role, name] of Object.entries(names)) {
+      if (BUILTIN_AGENT_KEYS.has(name)) {
+        const safeName = `orchestrator-${name}`;
+        (names as any)[role] = safeName;
+        renamed[role] = safeName;
+      }
+    }
+
+    if (Object.keys(renamed).length > 0) {
+      console.warn(
+        `[opencode-ollama-orchestrator] Built-in agent name collision detected. Auto-renamed:\n` +
+          Object.entries(renamed)
+            .map(([role, newName]) => `  ${role}: ${newName}`)
+            .join("\n") +
+          `\nTip: Set "plugin.agent.${Object.keys(renamed)[0]}" in opencode.json to a custom name.`
+      );
+    }
 
     // Register ALL 5 agents — only Strategist is primary, rest are subagents
     const agentEntries: Array<[string, string, "primary" | "subagent"]> = [

@@ -11,18 +11,23 @@ export function createEventHandler(deps: EventHandlerDeps) {
   const controller = new MissionController(deps);
 
   return async (event: any) => {
-    // Hook: whenever a regular message is sent, auto-trigger mission
-    if (event.type === "message.created") {
-      const text: string = event.data?.text ?? "";
+    // OpenCode event format varies between versions. Try both conventions.
+    // Convention A (older SDK): event.type === "message_create", payload in event.data
+    // Convention B (newer SDK): event.type === "message.created", payload in event.data
+    // Convention C (hook): the message itself is passed as argument
+    const evtType: string | undefined = event?.type;
+    const isMessageEvent =
+      evtType === "message.created" ||
+      evtType === "message_create" ||
+      evtType === "MESSAGE_CREATED" ||
+      evtType === "MESSAGE_CREATE";
 
-      // Ignore very short messages and obvious non-task inputs
-      if (shouldIgnore(text)) return event;
-
-      // Auto-detect if this looks like a task request
-      if (looksLikeTaskRequest(text)) {
+    if (isMessageEvent) {
+      const text: string = event.data?.text ?? event.data?.content ?? "";
+      if (text && !shouldIgnore(text) && looksLikeTaskRequest(text)) {
         await controller.start(text, true); // always automatic
-        return event;
       }
+      return event;
     }
 
     return event;

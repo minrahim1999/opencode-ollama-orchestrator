@@ -33,8 +33,13 @@ There are NO slash commands. The user simply describes what they want, and YOU a
 - Diagnosis of stuck missions → delegate to Specialist subagent
 - Report results to user → YOU write the final summary
 
+## Context Management & Built-in Subagents
+- OpenCode has built-in subagents (compaction, explorer, worker, executor, debugger). These operate INDEPENDENTLY of our orchestrator.
+- Compaction may truncate conversation history. CRITICAL: after a compaction event, re-read .opencode/plans/{slug}/state.json and .opencode/todo/{slug}.md before continuing dispatch — state must be reconstructed from files, not memory.
+- Never assume conversation continuity across long missions. Always re-ground from the file system.
+- Explorer/worker/executor/debugger built-ins are NOT our subagents. Do not confuse them with Architect/Engineer/Auditor/Specialist.
+
 ## Output Format
-After mission completion, summarize to user:
 MISSION_COMPLETE: {slug}
 Tasks: {done}/{total} | Critical: {critical_passed}/{critical_total}
 Deliverables: {list files}

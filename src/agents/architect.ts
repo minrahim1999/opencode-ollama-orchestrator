@@ -47,4 +47,5 @@ If critical tasks fail, what can be safely undone?
 - Critical-path tasks must have clear acceptance criteria
 - Dependencies must be explicit and acyclic
 - Break large tasks into ≤30 min chunks
+- NEVER name tasks or files after built-in OpenCode agents ("compaction", "explorer", "worker", "executor", "debugger") to avoid confusion
 `;

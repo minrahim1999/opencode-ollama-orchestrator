@@ -151,13 +151,30 @@ Each mission gets its own directory:
 
 ---
 
+## Built-in Agent Isolation
+
+OpenCode ships with built-in subagents (`compaction`, `explorer`, `worker`, `executor`, `debugger`). Our orchestrator agents are completely separate. To prevent collisions:
+
+1. **Auto-rename on collision** — If you name an orchestrator agent `"worker"`, the config handler auto-renames it to `"orchestrator-worker"` and prints a warning. Built-in functionality is never overwritten.
+2. **Prompt boundaries** — Every agent prompt instructs: "NEVER interact with built-in OpenCode agents."
+3. **Architect naming rule** — Tasks must never be named after built-in agents to avoid namespace confusion.
+
+## State Persistence Across Compaction
+
+OpenCode may compact (truncate) conversation history when context windows fill. Our orchestrator stores state in the file system so compaction never loses mission progress:
+
+| Source | File | Survives Compaction |
+|--------|------|--------------------|
+| Mission plan | `.opencode/plans/{slug}/plan.md` | ✅ Yes |
+| Task list | `.opencode/todo/{slug}.md` | ✅ Yes |
+| Live state | `.opencode/plans/{slug}/state.json` | ✅ Yes |
+| Chat history | In-memory (LLM context) | ❌ No — compaction erases this |
+
+After any compaction event, Strategist re-grounds by re-reading these files before continuing dispatch.
+
+---
+
 ## Installation
-
-```bash
-npm install opencode-ollama-orchestrator
-```
-
-**opencode.json:**
 
 ```json
 {
