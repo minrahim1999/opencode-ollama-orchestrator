@@ -498,6 +498,35 @@ The plugin uses atomic writes (write to `.tmp` then rename). If you see corrupti
 
 **Fix:** Upgrade to **v2.1.12+**. All agent prompts now explicitly instruct: "Call the question tool to present your question with pre-defined options. Do NOT just write text." This triggers OpenCode's interactive modal instead of plain text output.
 
+### Mission hangs / model unavailable
+
+**Symptom:** Mission starts but never dispatches tasks. Logs show "createSession primary model failed" with no recovery.
+
+**Fix:** Upgrade to **v2.1.13+**. `createSession()` now catches model errors and tries `fallbackModel` (per-agent config first, then global config). Configure fallback in `opencode.json`:
+```json
+{
+  "agent": {
+    "engineer": { "model": "ollama/kimi-k2.7-code", "fallbackModel": "ollama/deepseek-v4-pro" }
+  },
+  "fallbackModel": "ollama/deepseek-v4-pro"
+}
+```
+
+### Can't stop a running mission
+
+**Symptom:** A mission is running and you want to cancel it, but there's no command.
+
+**Fix:** Upgrade to **v2.1.13+**. The plugin registers these tools:
+- **abort_mission** — Aborts ALL active missions. Call via slash command or agent invocation.
+- **skip_task** — Skips a specific task by ID without aborting the whole mission.
+- **resume_from** — Resumes from a specific task ID, auto-completing all prior tasks.
+
+### Session stuck / not responding
+
+**Symptom:** A subagent session appears to hang forever. No output for 10+ minutes.
+
+**Fix:** Upgrade to **v2.1.13+**. The watchdog auto-detects sessions idle for >15 minutes and marks them inactive. You can also manually run **check_watchdog** to force a check.
+
 ---
 
 ## Built-in Agent Isolation
@@ -518,6 +547,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **2.1.13** | 2026-06-17 | Model fallback, session tracking, abort/skip/resume/watchdog tools |
 | **2.1.12** | 2026-06-17 | Question tool instruction in all agent prompts (interactive modals) |
 | **2.1.11** | 2026-06-17 | Auto-pipeline model routing + todo file path discovery fixes |
 | **2.1.10** | 2026-06-17 | Strategist communication modes (ASK/RECOMMEND/ANSWER) |

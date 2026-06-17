@@ -4,6 +4,22 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.13] - 2026-06-17
+
+### Added
+- **Model fallback** — `createSession()` now tries the primary model first, catches failure, then tries `fallbackModel` (per-agent or global). If both fail, throws with a clear error showing primary + fallback model names. Prevents infinite hangs when a model is down.
+- **Session tracking** — Each session now records: agent name, model, creation time, prompts sent, last prompt time, task ID, mission slug. Exposed via `sessionSummary()` method.
+- **abort_mission tool** — New plugin tool to abort all active missions. Kills all active sessions.
+- **mission_status tool** — Shows all active missions (slug, state, done/failed/pending/active counts, elapsed time) + all sessions (id, agent, model, prompt count, age, status).
+- **skip_task tool** — Skip a specific task by ID in any mission. Marks it completed so execution continues past it.
+- **resume_from tool** — Resume a mission from a specific task ID. Auto-completes all prior tasks and starts execution from that point.
+- **check_watchdog tool** — Manually run the session watchdog. Detects sessions stuck for >15 minutes and marks them inactive.
+- **Watchdog** — `checkWatchdog()` method monitors session activity. Any session idle for >15 minutes gets auto-killed and logged.
+
+### Fixed
+- **Audit visibility** — `runAudit()` now calls `emit()` with clear pass/fail/warning messages, so audit results are visible to the user instead of hidden in stderr. Toasts also fire on audit outcomes.
+- **MissionController.abortMission(slug)** — Can abort a specific mission by slug without affecting others.
+
 ## [2.1.12] - 2026-06-17
 
 ### Fixed

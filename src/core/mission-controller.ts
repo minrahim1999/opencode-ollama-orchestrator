@@ -148,7 +148,7 @@ export class MissionController {
     ctx.state = "planning";
     this.emit(ctx, `Commissioning ${names.architect}...`, auto);
 
-    const archSession = await this.createSession(names.architect, `Plan: ${slug}`);
+    const archSession = await this.createSession(names.architect, `Plan: ${slug}`, undefined, slug);
 
     await this.promptSession(archSession.id, names.architect, [
       `Create a detailed plan for: ${description}`,
@@ -274,13 +274,97 @@ export class MissionController {
   abort(): void {
     for (const [, ctx] of Array.from(this.missions.entries())) {
       ctx.state = "failed";
-      this.saveMissionState(ctx); // Persist aborted state
+      this.saveMissionState(ctx);
     }
     this.active = false;
     const arr = Array.from(this.deps.sessions.entries());
     for (const [sid, state] of arr) {
       if (state.active) {
         this.deps.sessions.set(sid, { ...state, active: false });
+      }
+    }
+    console.error("[opencode-orchestrator] All missions aborted.");
+  }
+
+  /** Abort a specific mission by slug */
+  abortMission(slug: string): boolean {
+    for (const [, ctx] of Array.from(this.missions.entries())) {
+      if (ctx.slug === slug) {
+        ctx.state = "failed";
+        this.saveMissionState(ctx);
+        // Mark all sessions for this mission as inactive
+        for (const [sid, sess] of Array.from(this.deps.sessions.entries())) {
+          if (sess.missionSlug === slug) {
+            this.deps.sessions.set(sid, { ...sess, active: false });
+          }
+        }
+        console.error(`[opencode-orchestrator] Mission '${slug}' aborted.`);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Skip a specific task by ID */
+  skipTask(missionSlug: string, taskId: string): boolean {
+    for (const [, ctx] of Array.from(this.missions.entries())) {
+      if (ctx.slug === missionSlug) {
+        const idx = ctx.todos.findIndex((t) => t.id === taskId);
+        if (idx >= 0) {
+          ctx.todos[idx] = { ...ctx.todos[idx], status: "completed" };
+          updateTodoStatus(this.deps.directory, taskId, "completed", "Skipped by user", ctx.slug);
+          this.emit(ctx, `⏭️ ${taskId} skipped by user`, true);
+          this.saveMissionState(ctx);
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /** Resume execution from a specific task ID (for manual intervention) */
+  resumeFrom(missionSlug: string, taskId: string): boolean {
+    for (const [, ctx] of Array.from(this.missions.entries())) {
+      if (ctx.slug === missionSlug) {
+        const cfg = loadOrchestratorConfig(this.deps.directory);
+        const names = cfg.names;
+        // Mark all prior tasks as completed
+        let found = false;
+        for (const todo of ctx.todos) {
+          if (todo.id === taskId) {
+            found = true;
+            break;
+          }
+          if (todo.status === "pending") {
+            todo.status = "completed";
+            updateTodoStatus(this.deps.directory, todo.id, "completed", "Auto-completed by resumeFrom", ctx.slug);
+          }
+        }
+        if (!found) {
+          console.error(`[opencode-orchestrator] Task ${taskId} not found in mission ${missionSlug}`);
+          return false;
+        }
+        this.emit(ctx, `▶️ Resuming from ${taskId}`, true);
+        this.saveMissionState(ctx);
+        // Auto-resume execution
+        this.executeTodos(ctx, cfg, names, true).catch((err) => {
+          console.error(`[opencode-orchestrator] resumeFrom execute error:`, err);
+        });
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Watchdog: detect stuck sessions and kill them */
+  checkWatchdog(): void {
+    const STUCK_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes
+    for (const [sid, sess] of Array.from(this.deps.sessions.entries())) {
+      if (!sess.active) continue;
+      const idle = Date.now() - sess.lastPromptAt;
+      if (idle > STUCK_THRESHOLD_MS) {
+        console.error(`[opencode-orchestrator] WATCHDOG: Session ${sid.slice(0, 8)}… (${sess.agent}) stuck for ${Math.round(idle / 60000)}min. Marking inactive.`);
+        this.deps.sessions.set(sid, { ...sess, active: false });
       }
     }
   }
@@ -290,11 +374,29 @@ export class MissionController {
     const lines: string[] = [];
     for (const ctx of Array.from(this.missions.values())) {
       const pending = ctx.todos.filter((t) => t.status === "pending").length;
+      const inProgress = ctx.todos.filter((t) => t.status === "in_progress").length;
       const done = ctx.todos.filter((t) => t.status === "completed").length;
       const failed = ctx.todos.filter((t) => t.status === "failed").length;
-      lines.push(`${ctx.slug}: ${ctx.state} | ${done}/${ctx.todos.length} done | ${failed} failed`);
+      const elapsed = ctx.completedAt
+        ? ctx.completedAt - parseMissionTimestamp(ctx.missionId)
+        : Date.now() - parseMissionTimestamp(ctx.missionId);
+      lines.push(
+        `${ctx.slug}: ${ctx.state} | ${done}/${ctx.todos.length} done | ${failed} failed | ${pending} pending | ${inProgress} active | ${Math.round(elapsed / 1000)}s elapsed`
+      );
     }
     return lines.join("\n") || "No active missions.";
+  }
+
+  /** Get session-level cost/usage summary */
+  sessionSummary(): string[] {
+    const lines: string[] = [];
+    for (const [sid, sess] of Array.from(this.deps.sessions.entries())) {
+      const age = Math.round((Date.now() - sess.createdAt) / 1000);
+      lines.push(
+        `${sid.slice(0, 8)}… | ${sess.agent} | ${sess.model} | ${sess.promptsSent} prompts | ${age}s old | ${sess.active ? "active" : "idle"}`
+      );
+    }
+    return lines;
   }
 
   /* ─── Private helpers ─── */
@@ -356,7 +458,7 @@ export class MissionController {
       this.emit(ctx, `Delegating ${todo.id} to ${resolvedAgent}`, auto);
 
       try {
-        const session = await this.createSession(resolvedAgent, `${todo.id}: ${todo.description.slice(0, 40)}`);
+        const session = await this.createSession(resolvedAgent, `${todo.id}: ${todo.description.slice(0, 40)}`, todo.id, ctx.slug);
         await this.promptSession(session.id, resolvedAgent, this.buildTaskPrompt(todo, cfg, names, ctx.slug));
 
         if (auto) {
@@ -430,7 +532,7 @@ export class MissionController {
   private async runAudit(todo: ParsedTodo, auditorName: string, ctx: MissionCtx): Promise<boolean> {
     const auditResultPath = join(ctx.missionDir, `audit-${todo.id}.json`);
     
-    const session = await this.createSession(auditorName, `Audit: ${todo.id}`);
+    const session = await this.createSession(auditorName, `Audit: ${todo.id}`, todo.id, ctx.slug);
     await this.promptSession(session.id, auditorName, [
       `Audit task: ${todo.id}`,
       todo.description,
@@ -454,13 +556,14 @@ export class MissionController {
         const raw = readFileSync(auditResultPath, "utf-8");
         const result = JSON.parse(raw);
         if (result.passed === true) {
+          this.emit(ctx, `✅ AUDIT ${todo.id}: PASSED`, true);
           return true;
         }
-        console.error(`[opencode-orchestrator] Audit ${todo.id} FAILED:`, result.issues?.join("; ") || "No details");
+        this.emit(ctx, `❌ AUDIT ${todo.id}: FAILED — ${result.issues?.join("; ") || "No details"}`, true);
         return false;
       }
-    } catch {
-      // Auditor didn't write result file — check last message for explicit pass/fail
+    } catch (parseErr) {
+      this.emit(ctx, `⚠️ AUDIT ${todo.id}: Invalid audit result JSON`, true);
     }
 
     // Fallback: attempt to read last message from session
@@ -471,20 +574,27 @@ export class MissionController {
           path: { id: session.id },
           query: { directory: this.deps.directory, limit: 5 },
         });
-        const data = msgs.data as Array<{ info?: { text?: string }; parts?: Array<{ text?: string }> }> | undefined;
+        const data = msgs.data as Array<Record<string, any>> | undefined;
         if (data) {
           const lastMsg = data[data.length - 1];
-          const text = lastMsg?.info?.text || lastMsg?.parts?.map((p) => p.text).join(" ") || "";
-          if (/\bPASS\b/i.test(text) || /\bpassed\b/i.test(text)) return true;
-          if (/\bFAIL\b/i.test(text) || /\bfailed\b/i.test(text)) return false;
+          const textParts = lastMsg?.parts as Array<{ text?: string }> | undefined;
+          const text = lastMsg?.info?.text as string | undefined || textParts?.map((p: { text?: string }) => p.text).join(" ") || "";
+          if (/\bPASS\b/i.test(text) || /\bpassed\b/i.test(text)) {
+            this.emit(ctx, `✅ AUDIT ${todo.id}: PASSED (from message)`, true);
+            return true;
+          }
+          if (/\bFAIL\b/i.test(text) || /\bfailed\b/i.test(text)) {
+            this.emit(ctx, `❌ AUDIT ${todo.id}: FAILED (from message)`, true);
+            return false;
+          }
         }
       }
     } catch {
-      // Cannot read messages — be permissive (don't block on audit infra issues)
+      // Cannot read messages — be permissive
     }
 
     // Default permissive: if we can't determine, let it through
-    console.error(`[opencode-orchestrator] Audit ${todo.id}: no explicit result found, defaulting to pass.`);
+    this.emit(ctx, `⚠️ AUDIT ${todo.id}: No explicit result found, defaulting to PASS`, true);
     return true;
   }
 
@@ -511,30 +621,92 @@ export class MissionController {
     ].join("\n");
   }
 
-  private async createSession(agent: string, title: string): Promise<{ id: string }> {
+  private async createSession(agent: string, title: string, taskId?: string, slug?: string): Promise<{ id: string }> {
     const userConfig = loadUserConfig();
     const agentConfig = userConfig?.agent?.[agent];
     let modelObj: { providerID: string; modelID: string } | null = null;
+    let fallbackModelObj: { providerID: string; modelID: string } | null = null;
+
+    // Resolve primary model
     if (agentConfig?.model) {
       modelObj = parseModel(agentConfig.model);
     }
     if (!modelObj && userConfig?.model) {
       modelObj = parseModel(userConfig.model);
     }
-    const sessionCreateOpts: any = {
-      directory: this.deps.directory,
-      title,
-      agent,
-      ...(modelObj ? { model: modelObj } : {}),
-    };
+    // Resolve fallback model
+    if (agentConfig?.fallbackModel) {
+      fallbackModelObj = parseModel(agentConfig.fallbackModel);
+    }
+    if (!fallbackModelObj && userConfig?.fallbackModel) {
+      fallbackModelObj = parseModel(userConfig.fallbackModel);
+    }
+    // If no explicit fallback but primary model exists, try global default as fallback
+    if (!fallbackModelObj && agentConfig?.model && userConfig?.model) {
+      const parsed = parseModel(userConfig.model);
+      if (parsed && parsed.modelID !== modelObj?.modelID) {
+        fallbackModelObj = parsed;
+      }
+    }
+
+    let session: { id: string } | null = null;
+    let lastError: Error | null = null;
+
+    // Try primary model
     if (modelObj) {
-      console.error(`[opencode-orchestrator] createSession for ${agent} with model ${modelObj.providerID}/${modelObj.modelID}`);
+      try {
+        const opts: any = {
+          directory: this.deps.directory,
+          title,
+          agent,
+          model: modelObj,
+        };
+        console.error(`[opencode-orchestrator] createSession for ${agent} with model ${modelObj.providerID}/${modelObj.modelID}`);
+        session = await this.deps.client.v2.session.create(opts);
+      } catch (err) {
+        lastError = err as Error;
+        console.error(`[opencode-orchestrator] createSession primary model failed: ${(err as Error).message}`);
+      }
     }
-    const session = await this.deps.client.v2.session.create(sessionCreateOpts);
-    // Track session for polling lifecycle
-    if (session.id) {
-      this.deps.sessions.set(session.id, { active: true, step: 1 });
+
+    // Try fallback if primary failed
+    if (!session && fallbackModelObj) {
+      try {
+        const opts: any = {
+          directory: this.deps.directory,
+          title,
+          agent,
+          model: fallbackModelObj,
+        };
+        console.error(`[opencode-orchestrator] createSession for ${agent} with FALLBACK model ${fallbackModelObj.providerID}/${fallbackModelObj.modelID}`);
+        session = await this.deps.client.v2.session.create(opts);
+      } catch (err) {
+        lastError = err as Error;
+        console.error(`[opencode-orchestrator] createSession fallback model also failed: ${(err as Error).message}`);
+      }
     }
+
+    if (!session) {
+      throw new Error(
+        `[opencode-orchestrator] Failed to create session for ${agent}: ${lastError?.message ?? "unknown error"}. ` +
+        `Primary: ${modelObj ? `${modelObj.providerID}/${modelObj.modelID}` : "none"}. ` +
+        `Fallback: ${fallbackModelObj ? `${fallbackModelObj.providerID}/${fallbackModelObj.modelID}` : "none"}. ` +
+        `Check model availability and provider connectivity.`
+      );
+    }
+
+    // Track session with full info
+    this.deps.sessions.set(session.id, {
+      active: true,
+      step: 1,
+      agent,
+      model: modelObj ? `${modelObj.providerID}/${modelObj.modelID}` : "default",
+      createdAt: Date.now(),
+      promptsSent: 0,
+      lastPromptAt: Date.now(),
+      taskId,
+      missionSlug: slug,
+    });
     return session;
   }
 
@@ -559,6 +731,14 @@ export class MissionController {
       console.error(`[opencode-orchestrator] promptSession for ${agent} with model ${modelObj.providerID}/${modelObj.modelID}`);
     }
     await this.deps.client.v2.session.prompt(promptOpts);
+
+    // Update session tracking
+    const sess = this.deps.sessions.get(sessionID);
+    if (sess) {
+      sess.promptsSent++;
+      sess.lastPromptAt = Date.now();
+      this.deps.sessions.set(sessionID, sess);
+    }
   }
 
   private async pollSession(sessionId: string): Promise<void> {

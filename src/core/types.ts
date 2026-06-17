@@ -6,7 +6,20 @@
 export interface EventHandlerDeps {
   client: any;
   directory: string;
-  sessions: Map<string, { active: boolean; step: number }>;
+  sessions: Map<string, SessionInfo>;
+}
+
+/** Session tracking info */
+export interface SessionInfo {
+  active: boolean;
+  step: number;
+  agent: string;
+  model: string;
+  createdAt: number;
+  promptsSent: number;
+  lastPromptAt: number;
+  taskId?: string;
+  missionSlug?: string;
 }
 
 /** Why a task/mission got stuck */

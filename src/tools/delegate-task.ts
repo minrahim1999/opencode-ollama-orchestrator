@@ -1,6 +1,7 @@
 import { tool } from "@opencode-ai/plugin";
 import { loadOrchestratorConfig } from "../utils/constants.js";
 import type { ResolvedNames } from "../utils/constants.js";
+import type { SessionInfo } from "../core/types.js";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -8,7 +9,7 @@ import { join } from "node:path";
 interface DelegateTaskDeps {
   client: any;
   directory: string;
-  sessions: Map<string, { active: boolean; step: number }>;
+  sessions: Map<string, SessionInfo>;
 }
 
 /** Resolve generic agent names to configured names at runtime */
@@ -99,7 +100,15 @@ export function createDelegateTaskTool(deps: DelegateTaskDeps) {
 
       const session = await deps.client.v2.session.create(sessionCreateOpts);
 
-      deps.sessions.set(session.id, { active: true, step: 1 });
+      deps.sessions.set(session.id, {
+        active: true,
+        step: 1,
+        agent: resolved,
+        model: modelObj ? `${modelObj.providerID}/${modelObj.modelID}` : "default",
+        createdAt: Date.now(),
+        promptsSent: 1,
+        lastPromptAt: Date.now(),
+      });
 
       await deps.client.v2.session.prompt({
         sessionID: session.id,

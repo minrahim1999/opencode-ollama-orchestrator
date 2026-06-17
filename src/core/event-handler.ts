@@ -3,18 +3,12 @@
  * Intercepts regular user messages and triggers the full mission pipeline automatically.
  */
 import { MissionController } from "./mission-controller.js";
-import type { EventHandlerDeps } from "./types.js";
 
 const VERSION = "2.1.0";
 
-export function createEventHandler(deps: EventHandlerDeps) {
-  const controller = new MissionController(deps);
-
+export function createEventHandler(controller: MissionController) {
   return async (event: any) => {
     // OpenCode event format varies between versions. Try both conventions.
-    // Convention A (older SDK): event.type === "message_create", payload in event.data
-    // Convention B (newer SDK): event.type === "message.created", payload in event.data
-    // Convention C (hook): the message itself is passed as argument
     const evtType: string | undefined = event?.type;
     const isMessageEvent =
       evtType === "message.created" ||
