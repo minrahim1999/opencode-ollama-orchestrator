@@ -1,4 +1,4 @@
-import { readFileSync, existsSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 export interface ParsedTodo {
@@ -24,16 +24,10 @@ export interface ParsedTodo {
  * - [x] TASK-002: Description (@auditor)
  *   - Acceptance: condition
  */
-export function parseTodos(directory: string): ParsedTodo[] {
-  const path = join(directory, ".opencode", "todos.md");
-  if (!existsSync(path)) return [];
-
-  const content = readFileSync(path, "utf-8");
+function parseTodoContent(content: string): ParsedTodo[] {
   const lines = content.split("\n");
   const todos: ParsedTodo[] = [];
-
   let current: Partial<ParsedTodo> | null = null;
-
   let currentPhase = "";
 
   for (const line of lines) {
@@ -89,14 +83,51 @@ export function parseTodos(directory: string): ParsedTodo[] {
   return todos;
 }
 
-/** Update a specific todo's status in todos.md */
+/** Find the todo file — checks mission-specific first, then generic todos.md */
+export function findTodoFile(directory: string, slug?: string): string {
+  const candidates: string[] = [];
+  if (slug) {
+    candidates.push(join(directory, ".opencode", "todo", `${slug}.md`));
+  }
+  candidates.push(join(directory, ".opencode", "todos.md"));
+
+  // Also scan .opencode/todo/ for any .md files
+  const todoDir = join(directory, ".opencode", "todo");
+  if (existsSync(todoDir)) {
+    try {
+      const files = readdirSync(todoDir).filter((f) => f.endsWith(".md"));
+      for (const f of files) {
+        candidates.push(join(todoDir, f));
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  // Default to mission-specific if slug given, else generic
+  return slug ? join(directory, ".opencode", "todo", `${slug}.md`) : join(directory, ".opencode", "todos.md");
+}
+
+export function parseTodos(directory: string, slug?: string): ParsedTodo[] {
+  const path = findTodoFile(directory, slug);
+  if (!existsSync(path)) return [];
+
+  const content = readFileSync(path, "utf-8");
+  return parseTodoContent(content);
+}
+
+/** Update a specific todo's status in the discovered todo file */
 export function updateTodoStatus(
   directory: string,
   taskId: string,
   status: "completed" | "failed",
-  evidence?: string
+  evidence?: string,
+  slug?: string
 ): void {
-  const path = join(directory, ".opencode", "todos.md");
+  const path = findTodoFile(directory, slug);
   if (!existsSync(path)) return;
 
   let content = readFileSync(path, "utf-8");
@@ -120,7 +151,9 @@ export function updateTodoStatus(
 }
 
 /** Export parsed todos to a JSON file for programmatic access */
-export function exportTodosJson(directory: string, todos: ParsedTodo[]): void {
-  const path = join(directory, ".opencode", "todos.json");
+export function exportTodosJson(directory: string, todos: ParsedTodo[], slug?: string): void {
+  const path = slug
+    ? join(directory, ".opencode", "todo", `${slug}.json`)
+    : join(directory, ".opencode", "todos.json");
   writeFileSync(path, JSON.stringify(todos, null, 2), "utf-8");
 }

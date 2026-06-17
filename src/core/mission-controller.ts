@@ -11,8 +11,9 @@ import type { EventHandlerDeps } from "./types.js";
 import { loadOrchestratorConfig, resolveAgentAlias } from "../utils/constants.js";
 import { ensureProjectDirs, getMissionDirectory, slugify } from "../utils/paths.js";
 import { parseTodos, updateTodoStatus, exportTodosJson, type ParsedTodo } from "../utils/todo-parser.js";
-import { writeFileSync, existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import {
   isDoxInitialized,
   doxInit,
@@ -47,6 +48,33 @@ type MissionState =
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 300; // 10 minutes
+
+/** Load raw opencode.json to find agent model assignments */
+function loadUserConfig(): Record<string, any> | null {
+  const candidates = [
+    join(homedir(), ".config", "opencode", "opencode.json"),
+    join(homedir(), ".opencode", "opencode.json"),
+  ];
+  for (const p of candidates) {
+    try {
+      const raw = readFileSync(p, "utf-8");
+      return JSON.parse(raw);
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+/** Parse "ollama/kimi-k2.7-code" -> { providerID: "ollama", modelID: "kimi-k2.7-code" } */
+function parseModel(modelStr: string): { providerID: string; modelID: string } | null {
+  if (!modelStr || typeof modelStr !== "string") return null;
+  const parts = modelStr.split("/");
+  if (parts.length >= 2) {
+    return { providerID: parts[0], modelID: parts.slice(1).join("/") };
+  }
+  return null;
+}
 
 function parseMissionTimestamp(missionId: string): number {
   if (!missionId) return Date.now();
@@ -151,12 +179,12 @@ export class MissionController {
     }
 
     // ---- PARSING ----
-    ctx.todos = parseTodos(this.deps.directory);
+    ctx.todos = parseTodos(this.deps.directory, ctx.slug);
     // Filter to this mission's todos if stored in separate file
     const missionTodos = this.loadMissionTodos(slug);
     if (missionTodos.length > 0) ctx.todos = missionTodos;
 
-    exportTodosJson(this.deps.directory, ctx.todos);
+    exportTodosJson(this.deps.directory, ctx.todos, ctx.slug);
     this.saveMissionState(ctx);
 
     if (ctx.todos.length === 0) {
@@ -329,7 +357,7 @@ export class MissionController {
 
       try {
         const session = await this.createSession(resolvedAgent, `${todo.id}: ${todo.description.slice(0, 40)}`);
-        await this.promptSession(session.id, resolvedAgent, this.buildTaskPrompt(todo, cfg, names));
+        await this.promptSession(session.id, resolvedAgent, this.buildTaskPrompt(todo, cfg, names, ctx.slug));
 
         if (auto) {
           await this.pollSession(session.id);
@@ -340,7 +368,7 @@ export class MissionController {
           const auditPassed = await this.runAudit(todo, names.auditor, ctx);
           if (!auditPassed) {
             // Audit failed — mark task failed and trigger retry logic
-            updateTodoStatus(this.deps.directory, todo.id, "failed", "Audit failed — acceptance criteria not met");
+            updateTodoStatus(this.deps.directory, todo.id, "failed", "Audit failed — acceptance criteria not met", ctx.slug);
             ctx.todos[index] = { ...todo, status: "failed" };
             this.emit(ctx, `${todo.id} audit FAILED`, auto);
             // Trigger retry if retries remain
@@ -355,7 +383,7 @@ export class MissionController {
           }
         }
 
-        updateTodoStatus(this.deps.directory, todo.id, "completed", `Done by ${resolvedAgent}`);
+        updateTodoStatus(this.deps.directory, todo.id, "completed", `Done by ${resolvedAgent}`, ctx.slug);
         ctx.todos[index] = { ...todo, status: "completed" };
         this.emit(ctx, `${todo.id} completed`, auto);
 
@@ -375,7 +403,7 @@ export class MissionController {
           await sleep(1000 * Math.pow(2, retries));
           continue; // Retry same task
         } else {
-          updateTodoStatus(this.deps.directory, todo.id, "failed", String(err));
+          updateTodoStatus(this.deps.directory, todo.id, "failed", String(err), ctx.slug);
           ctx.todos[index] = { ...todo, status: "failed" };
           this.emit(ctx, `${todo.id} failed permanently`, auto);
         }
@@ -463,8 +491,10 @@ export class MissionController {
   private buildTaskPrompt(
     todo: ParsedTodo,
     cfg: Pick<ReturnType<typeof loadOrchestratorConfig>, "maxRetries" | "requireApproval" | "maxSubagentDepth">,
-    names: { specialist: string; auditor: string }
+    names: { specialist: string; auditor: string },
+    slug: string
   ): string {
+    const todoPath = join(this.deps.directory, ".opencode", "todo", `${slug}.md`);
     return [
       `Task: ${todo.id}`,
       `Description: ${todo.description}`,
@@ -476,15 +506,31 @@ export class MissionController {
       `Rules: maxRetries=${cfg.maxRetries}, approval=${cfg.requireApproval}, depth=${cfg.maxSubagentDepth}`,
       `Escalate to ${names.specialist} for deep issues. ${names.auditor} audits critical items.`,
       "",
-      "After completion, update todos and provide evidence.",
+      `After completion, update the todo checkbox in ${todoPath} for task ${todo.id}.`,
+      "You can also append an Evidence line below the task.",
     ].join("\n");
   }
 
   private async createSession(agent: string, title: string): Promise<{ id: string }> {
-    const session = await this.deps.client.v2.session.create({
+    const userConfig = loadUserConfig();
+    const agentConfig = userConfig?.agent?.[agent];
+    let modelObj: { providerID: string; modelID: string } | null = null;
+    if (agentConfig?.model) {
+      modelObj = parseModel(agentConfig.model);
+    }
+    if (!modelObj && userConfig?.model) {
+      modelObj = parseModel(userConfig.model);
+    }
+    const sessionCreateOpts: any = {
       directory: this.deps.directory,
       title,
-    });
+      agent,
+      ...(modelObj ? { model: modelObj } : {}),
+    };
+    if (modelObj) {
+      console.error(`[opencode-orchestrator] createSession for ${agent} with model ${modelObj.providerID}/${modelObj.modelID}`);
+    }
+    const session = await this.deps.client.v2.session.create(sessionCreateOpts);
     // Track session for polling lifecycle
     if (session.id) {
       this.deps.sessions.set(session.id, { active: true, step: 1 });
@@ -493,12 +539,26 @@ export class MissionController {
   }
 
   private async promptSession(sessionID: string, agent: string, text: string): Promise<void> {
-    await this.deps.client.v2.session.prompt({
+    const userConfig = loadUserConfig();
+    const agentConfig = userConfig?.agent?.[agent];
+    let modelObj: { providerID: string; modelID: string } | null = null;
+    if (agentConfig?.model) {
+      modelObj = parseModel(agentConfig.model);
+    }
+    if (!modelObj && userConfig?.model) {
+      modelObj = parseModel(userConfig.model);
+    }
+    const promptOpts: any = {
       sessionID: sessionID,
       directory: this.deps.directory,
       agent,
       parts: [{ type: "text", text }],
-    });
+    };
+    if (modelObj) {
+      promptOpts.model = modelObj;
+      console.error(`[opencode-orchestrator] promptSession for ${agent} with model ${modelObj.providerID}/${modelObj.modelID}`);
+    }
+    await this.deps.client.v2.session.prompt(promptOpts);
   }
 
   private async pollSession(sessionId: string): Promise<void> {
