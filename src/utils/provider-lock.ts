@@ -5,6 +5,7 @@ import { join } from "node:path";
 interface OpencodeJson {
   model?: string;
   provider?: Record<string, { baseUrl?: string } & Record<string, any>>;
+  agent?: Record<string, { model?: string } & Record<string, any>>;
 }
 
 function findConfigPath(): string | null {
@@ -30,9 +31,10 @@ function loadConfig(): OpencodeJson | null {
 
 /**
  * Verify all configured models/providers are Ollama.
- * Throws if non-Ollama provider or model is detected.
+ * Only reads the config file — does NOT call SDK methods during init
+ * to avoid blocking the plugin load.
  */
-export async function lockProviderToOllama(client: any): Promise<void> {
+export async function lockProviderToOllama(_client: any): Promise<void> {
   const cfg = loadConfig();
 
   // Check default model
@@ -42,10 +44,9 @@ export async function lockProviderToOllama(client: any): Promise<void> {
     );
   }
 
-  // Check agent-specific models
-  const config = await client.config.get().then((r: any) => r.data).catch(() => null);
-  if (config?.agent) {
-    for (const [name, agent] of Object.entries(config.agent)) {
+  // Check agent-specific models from file only
+  if (cfg?.agent) {
+    for (const [name, agent] of Object.entries(cfg.agent)) {
       const m = (agent as any)?.model as string | undefined;
       if (m && !m.startsWith("ollama/")) {
         throw new Error(
