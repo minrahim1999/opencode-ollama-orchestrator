@@ -1,7 +1,7 @@
 {
   "name": "opencode-ollama-orchestrator",
-  "version": "1.0.0",
-  "description": "Multi-agent orchestrator for OpenCode, hard-locked to Ollama providers. Supports configurable agent names, full config inheritance, subagent delegation with Strategist/Architect/Engineer/Auditor/Specialist pipeline.",
+  "version": "1.1.0",
+  "description": "Multi-agent orchestrator for OpenCode, hard-locked to Ollama. Automatic mission mode with per-project plan/todo scoping.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

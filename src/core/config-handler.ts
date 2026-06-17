@@ -90,13 +90,15 @@ export function createConfigHandler(deps: ConfigHandlerDeps) {
 
     // Register slash commands
     const cmds: Array<{ name: CommandKey; description: string; agent: string }> = [
-      { name: "/task", description: "Start a new mission", agent: names.strategist },
+      { name: "/task", description: "Start a new mission (manual)", agent: names.strategist },
+      { name: "/auto", description: "Start a fully automatic mission", agent: names.strategist },
       { name: "/plan", description: "Generate/view plan", agent: names.architect },
       { name: "/agents", description: "List active agents", agent: names.auditor },
       { name: "/status", description: "Show mission status", agent: names.strategist },
       { name: "/delegate", description: "Delegate task manually", agent: names.strategist },
       { name: "/retry", description: "Retry failed tasks", agent: names.strategist },
       { name: "/abort", description: "Abort mission", agent: names.strategist },
+      { name: "/version", description: "Show plugin version", agent: names.strategist },
     ];
 
     for (const cmd of cmds) {

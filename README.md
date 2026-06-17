@@ -51,15 +51,35 @@ Restart OpenCode. Done.
 
 ## Commands
 
-| Command | Handler | Description |
-|---------|---------|-------------|
-| `/task "description"` | Strategist | Start a new mission |
-| `/plan` | Architect | Generate or regenerate plan |
-| `/agents` | Auditor | List active agents and models |
-| `/status` | Strategist | Show mission progress |
-| `/delegate agent="engineer" task="..."` | Strategist | Manually delegate a task |
-| `/retry` | Strategist | Retry failed tasks |
-| `/abort` | Strategist | Abort current mission |
+| Command | Mode | Handler | Description |
+|---------|------|---------|-------------|
+| `/task "description"` | Manual | Strategist | Start mission, pause for review after planning |
+| `/auto "description"` | Automatic | Strategist | Full auto: plan → execute → audit → complete |
+| `/plan` | Manual | Architect | Regenerate or view plan |
+| `/status` | Both | Strategist | Show mission progress |
+| `/agents` | Both | Auditor | List active agents |
+| `/delegate` | Manual | Strategist | Manually delegate a task |
+| `/retry` | Both | Strategist | Retry failed tasks |
+| `/abort` | Both | Strategist | Abort all missions |
+| `/version` | Both | — | Show plugin version |
+
+### Manual vs Automatic
+
+**`/task`** — Planner creates `.opencode/plans/{slug}/plan.md` and `.opencode/todo/{slug}.md`, then pauses. You review the plan, then run `/auto` to continue.
+
+**`/auto`** — Runs the entire pipeline without stopping. Architect writes plan, Engineers execute all todos in dependency order, Auditor verifies critical path, Strategist reports completion.
+
+**File locations** (per-project):
+```
+{project}/
+├── .opencode/
+│   ├── plans/
+│   │   └── build-auth-system/          # Mission directory (slugified name)
+│   │       ├── plan.md                 # Architect's plan
+│   │       └── state.json              # Mission state
+│   └── todo/
+│       └── build-auth-system.md        # Todos for this mission
+```
 
 ## Full Config Reference
 
