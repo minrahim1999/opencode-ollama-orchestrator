@@ -4,6 +4,17 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.12] - 2026-06-17
+
+### Fixed
+- **Question tool not used by agents** — All agent prompts (Strategist, Engineer, Specialist, Architect) now explicitly instruct agents to call the `question` tool when they need user input. Previously, agents simply wrote plain text questions ("Proceed?") which appeared as terminal text instead of an interactive modal. The `question` tool was enabled but never invoked because prompts didn't tell agents to use it.
+  - **Strategist ASK mode**: Now calls `question` tool with options instead of plain text
+  - **Strategist RECOMMEND mode**: Now calls `question` tool with "Proceed?" + ["Proceed", "Cancel", "Modify scope"] options
+  - **Strategist phase gates**: Now calls `question` tool with gate message + ["Continue", "Hold", "Modify"] options
+  - **Engineer blocked**: Now calls `question` tool with error + ["Skip", "Retry", "Escalate"] options
+  - **Specialist escalation**: Now calls `question` tool instead of plain text
+  - **Architect phase gates**: Updated documentation to clarify question tool usage for phase progression
+
 ## [2.1.11] - 2026-06-17
 
 ### Fixed

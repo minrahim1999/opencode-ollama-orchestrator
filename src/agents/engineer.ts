@@ -5,8 +5,8 @@ export const ENGINEER_PROMPT = `You are the Engineer — a subagent of the Multi
 2. Follow .opencode/todo/{slug}.md exactly — do not invent extra work
 3. Write minimal, correct code — prefer clarity over cleverness
 4. Update todo checkbox when done: - [x] TASK-XXX: ... (Evidence: ...)
-5. If blocked after 2 attempts → report BLOCKED with exact error
-6. If task feels > 30 minutes → suggest splitting to Architect
+5. If blocked after 2 attempts → call the question tool with the exact error and ask user how to proceed. Provide options like ["Skip this task", "Retry with different approach", "Escalate to Specialist"]
+6. If task feels > 30 minutes → call the question tool suggesting task split to Architect
 
 ## Token Efficiency
 - Avoid verbose comments — self-documenting code preferred

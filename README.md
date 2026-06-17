@@ -490,6 +490,14 @@ The plugin uses atomic writes (write to `.tmp` then rename). If you see corrupti
 
 **Fix:** Upgrade to **v2.1.11+**. Before v2.1.11, `updateTodoStatus()` hardcoded `.opencode/todos.md` while the architect wrote to `.opencode/todo/{slug}.md`. Updates went to the wrong file. With v2.1.11+, `findTodoFile()` discovers the actual todo file automatically, and `buildTaskPrompt()` tells subagents exactly which file to update.
 
+### Agent asks plain text questions instead of showing modal
+
+**Symptom:** When the strategist or subagent needs user input (e.g., "Proceed?", "Which component?"), it outputs plain text in the terminal. You have to type a free-form answer instead of clicking a choice in an interactive modal.
+
+**Root cause:** The agent prompts told agents to "ask questions" in plain text, but never told them to call the `question` tool. The `question` tool was enabled (`question: true` in tools, `question: "allow"` in permissions), but agents didn't know they should use it.
+
+**Fix:** Upgrade to **v2.1.12+**. All agent prompts now explicitly instruct: "Call the question tool to present your question with pre-defined options. Do NOT just write text." This triggers OpenCode's interactive modal instead of plain text output.
+
 ---
 
 ## Built-in Agent Isolation
@@ -510,6 +518,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **2.1.12** | 2026-06-17 | Question tool instruction in all agent prompts (interactive modals) |
 | **2.1.11** | 2026-06-17 | Auto-pipeline model routing + todo file path discovery fixes |
 | **2.1.10** | 2026-06-17 | Strategist communication modes (ASK/RECOMMEND/ANSWER) |
 | **2.1.9** | 2026-06-17 | Per-agent model resolution in `delegate-task` tool |
