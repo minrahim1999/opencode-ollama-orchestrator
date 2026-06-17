@@ -1,7 +1,7 @@
 {
   "name": "opencode-ollama-orchestrator",
   "version": "1.0.0",
-  "description": "Multi-agent orchestrator for OpenCode, hard-locked to Ollama providers. Supports /task, /plan, delegate_task with Commander/Planner/Worker/Reviewer agents.",
+  "description": "Multi-agent orchestrator for OpenCode, hard-locked to Ollama providers. Supports configurable agent names, full config inheritance, subagent delegation with Strategist/Architect/Engineer/Auditor/Specialist pipeline.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -14,24 +14,33 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "CHANGELOG.md",
+    "LICENSE",
+    "docs",
+    "examples"
   ],
   "keywords": [
     "opencode-plugin",
     "opencode",
     "ollama",
     "orchestrator",
-    "multi-agent"
+    "multi-agent",
+    "subagent",
+    "ollama-only"
   ],
   "license": "MIT",
-  "author": "muhaimin",
+  "author": "muhaimin \u003cmuhaimin@example.com\u003e",
   "repository": {
     "type": "git",
-    "url": "https://github.com/muhaimin/opencode-ollama-orchestrator"
+    "url": "git@github.com:minrahim1999/opencode-ollama-orchestrator.git"
   },
+  "bugs": {
+    "url": "https://github.com/minrahim1999/opencode-ollama-orchestrator/issues"
+  },
+  "homepage": "https://github.com/minrahim1999/opencode-ollama-orchestrator#readme",
   "peerDependencies": {
-    "@opencode-ai/plugin": ">=1.17.0",
-    "@opencode-ai/sdk": ">=1.17.0"
+    "@opencode-ai/plugin": "\u003e=1.17.0",
+    "@opencode-ai/sdk": "\u003e=1.17.0"
   },
   "devDependencies": {
     "@opencode-ai/plugin": "^1.17.7",
@@ -41,9 +50,12 @@
   },
   "scripts": {
     "build": "tsc",
-    "prepublishOnly": "npm run build"
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "lint": "echo 'Lint: add eslint or biome when ready'",
+    "prepublishOnly": "npm run clean \u0026\u0026 npm run build"
   },
   "engines": {
-    "node": ">=20"
+    "node": "\u003e=20"
   }
 }

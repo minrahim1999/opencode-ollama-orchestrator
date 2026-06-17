@@ -1,0 +1,33 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "opencode-ollama-orchestrator"
+  ],
+  "agent": {
+    "strategist": {
+      "model": "ollama/deepseek-v4-pro",
+      "temperature": 0.3,
+      "maxTokens": 8192
+    },
+    "architect": {
+      "model": "ollama/deepseek-v4-flash",
+      "temperature": 0.8,
+      "maxTokens": 4096
+    },
+    "engineer": {
+      "model": "ollama/kimi-k2.7-code",
+      "temperature": 0.2,
+      "maxTokens": 8192
+    },
+    "auditor": {
+      "model": "ollama/kimi-k2.6",
+      "temperature": 0.3,
+      "maxTokens": 4096
+    },
+    "specialist": {
+      "model": "ollama/deepseek-v4-flash",
+      "temperature": 0.5,
+      "maxTokens": 4096
+    }
+  }
+}
