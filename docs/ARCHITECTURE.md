@@ -2,54 +2,49 @@
 
 ## Agent Pipeline (v2.1.0)
 
-```
-User: "Build auth system with JWT and OAuth"
-        |
-        v
-   ┌─────────────┐
-   │  Strategist │ ← sole PRIMARY agent
-   │  (orchestrate│
-   └─────────────┘
-        |  if vague: asks 1-2 questions, waits
-        |  if clear: auto-creates mission
-        v
-   ┌─────────────┐
-   │  Architect  │ ← subagent: writes plan + todos
-   │  /plan       │
-   └─────────────┘
-        |  writes .opencode/plans/{slug}/plan.md
-        |  writes .opencode/todo/{slug}.md
-        v
-   ┌─────────────┐
-   │  Engineers   │ ← subagent(s): parallel execution
-   │  (max 3)     │    Ollama Pro hard limit
-   └─────────────┘
-        |  completes tasks within each phase
-        v
-   ┌─────────────┐     if critical-path
-   │  Auditor     │ ← subagent: verifies acceptance
-   │  /audit      │
-   └─────────────┘
-        |  PASS / PARTIAL / FAIL
-        v
-   ┌─────────────────────────┐
-   │  PHASE GATE?            │
-   │  phase-gate: yes → PAUSE │
-   │  "Phase X done. Continue?"│
-   └─────────────────────────┘
-        |  user replies "yes" → resume next phase
-        |  user replies "no"  → HOLD, await changes
-        |  no gate or single-phase → auto-continue
-        v
-   ┌─────────────┐     if stuck >10min or loop>3
-   │  Specialist │ ← subagent: diagnosis + replan
-   │  /specialist│
-   └─────────────┘
-        |  RETRY / REPLAN / SIMPLIFY
-        v
-   ┌─────────────┐
-   │  Strategist  │ ← MISSION_COMPLETE summary
-   └─────────────┘
+```mermaid
+flowchart TD
+    User([User]) -->|"'Build auth system with JWT and OAuth'"| Strategist
+
+    Strategist -->|"if vague"| Clarify["Ask 1-2 questions, wait for answer"]
+    Clarify -->|"user replies"| Strategist
+
+    Strategist -->|"if clear"| Mission["Auto-create mission"]
+    Mission --> Architect
+
+    Architect -->|"writes .opencode/plans/{slug}/plan.md"| Plan[(Plan File)]
+    Architect -->|"writes .opencode/todo/{slug}.md"| Todo[(Todo File)]
+    Plan --> Engineers
+    Todo --> Engineers
+
+    Engineers -->|"up to 3 parallel"| PhaseGate{Phase Gate?}
+    PhaseGate -->|"phase-gate: yes"| Pause["PAUSE: Present gate message to user"]
+    Pause -->|"user: yes / continue"| Resume[MissionController.resume]
+    Pause -->|"user: no / hold"| Hold[HOLD: await changes]
+    Hold -->|"changes requested"| Specialist
+    PhaseGate -->|"no gate / single-phase"| Resume
+
+    Resume -->|"critical-path: yes"| Auditor
+    Resume -->|"critical-path: no"| Continue
+    Auditor -->|"PASS / PARTIAL / FAIL"| Continue
+
+    Continue -->|"all tasks done"| Complete[Strategist: MISSION_COMPLETE]
+    Continue -->|"stuck >10min or loop>3"| Specialist
+
+    Specialist -->|"RETRY / REPLAN / SIMPLIFY"| Strategist
+
+    subgraph Subagents
+        Architect
+        Engineers
+        Auditor
+        Specialist
+    end
+
+    style Strategist fill:#e1f5fe
+    style User fill:#f3e5f5
+    style Complete fill:#e8f5e9
+    style Pause fill:#fff3e0
+    style Hold fill:#ffebee
 ```
 
 ## Execution Flow
@@ -105,25 +100,45 @@ User: "Build auth system with JWT and OAuth"
 
 ## Data Flow
 
-```
-opencode.json agent.{name}              plugin-level options
-        |                                       |
-        v                                       v
-   {model, temperature,                       {maxParallelWorkers,
-    maxTokens, skills,                         maxRetries, verbose,
-    permission, prompt,                         requireApproval,
-    systemPrompt, ...}                          maxSubagentDepth,
-                                                doxAutoInit,
-                                                doxAutoCloseout}
-        |                                       |
-        +──────────────┬────────────────────────┤
-                       v
-              config-handler.ts merges
-                       |
-                       v
-        final agent config = shallow merge(user, defaults)
-        HARD rules: mode=primary for strategist, mode=subagent for others
-        HARD rule: maxParallelWorkers = min(userValue, 3)
+```mermaid
+flowchart LR
+    subgraph UserConfig["opencode.json"]
+        AgentConfig["agent.{name}"]
+        PluginOpts["plugin options"]
+    end
+
+    subgraph AgentFields["Agent Fields"]
+        model["model"]
+        temp["temperature"]
+        tokens["maxTokens"]
+        skills["skills"]
+        perm["permission"]
+        prompt["prompt"]
+        sysPrompt["systemPrompt"]
+    end
+
+    subgraph PluginFields["Plugin Fields"]
+        workers["maxParallelWorkers"]
+        retries["maxRetries"]
+        verbose["verbose"]
+        approval["requireApproval"]
+        depth["maxSubagentDepth"]
+        doxInit["doxAutoInit"]
+        doxClose["doxAutoCloseout"]
+    end
+
+    AgentConfig ---> AgentFields
+    PluginOpts ---> PluginFields
+
+    AgentFields ---> Merge[config-handler.ts merges]
+    PluginFields ---> Merge
+
+    Merge --> Final["Final Agent Config"]
+    Final --> Hard["HARD Rules Applied"]
+    Hard --> Out["mode=primary|subagent\nmaxParallelWorkers ≤ 3"]
+
+    style Merge fill:#e1f5fe
+    style Hard fill:#fff3e0
 ```
 
 ---
@@ -175,26 +190,24 @@ Our orchestrator agents: `strategist`, `architect`, `engineer`, `auditor`, `spec
 
 ## DOX Framework Integration
 
-```
-Mission Start
-    |
-    v
-isDoxInitialized()? ──No──→ doxInit() → seed AGENTS.md → write run header
-    |Yes
-    v
-appendDoxLog("mission started")
-    |
-    v
-[Engineers execute tasks]
-    |
-    v
-appendDoxLog("task completed: TASK-001")
-    |
-    v
-Mission Complete / Failed
-    |
-    v
-doxCloseout() → append summary to AGENTS.md → archive run record
+```mermaid
+flowchart TD
+    Start["Mission Start"] --> Initialized{isDoxInitialized?}
+    Initialized -->|"No"| Init["doxInit() → seed AGENTS.md → write run header"]
+    Init --> LogStart["appendDoxLog('mission started')"]
+    Initialized -->|"Yes"| LogStart
+
+    LogStart --> Execute["Engineers execute tasks"]
+    Execute --> LogTask["appendDoxLog('task completed: TASK-001')"]
+    LogTask --> More{More tasks?}
+    More -->|"Yes"| Execute
+    More -->|"No"| Complete["Mission Complete / Failed"]
+
+    Complete --> Closeout["doxCloseout()"]
+    Closeout --> Archive["Append summary to AGENTS.md\nArchive run record"]
+
+    style Init fill:#e1f5fe
+    style Closeout fill:#e8f5e9
 ```
 
 ---
