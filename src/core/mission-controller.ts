@@ -12,7 +12,8 @@ import { loadOrchestratorConfig, resolveAgentAlias } from "../utils/constants.js
 import { ensureProjectDirs, getMissionDirectory, slugify } from "../utils/paths.js";
 import { parseTodos, updateTodoStatus, exportTodosJson, type ParsedTodo } from "../utils/todo-parser.js";
 import { createBackup, revertBackup, deleteBackup } from "../utils/backup.js";
-import { readFileSync, existsSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
+import { writeFileAtomicSync } from "../utils/atomic.js";
+import { readFileSync, existsSync, writeFileSync, mkdirSync, renameSync, readdirSync, statSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import {
@@ -35,6 +36,16 @@ interface MissionCtx {
   retryCounts: Map<string, number>;
   completedAt?: number;
   backup?: { type: "git_stash" | "git_commit" | "directory" | "none"; path?: string; commitHash?: string };
+  memory?: TaskMemoryEntry[]; // Accumulated context from completed tasks
+}
+
+interface TaskMemoryEntry {
+  taskId: string;
+  agent: string;
+  summary: string;      // One-line summary of what was done
+  filesChanged: string[];
+  issues: string[];
+  timestamp: number;
 }
 
 type MissionState =
@@ -90,9 +101,61 @@ export class MissionController {
   private deps: EventHandlerDeps;
   private missions = new Map<string, MissionCtx>();
   private active = false;
+  private cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(deps: EventHandlerDeps) {
     this.deps = deps;
+    this.startCleanup();
+  }
+
+  /** Start periodic cleanup of old mission directories */
+  private startCleanup(): void {
+    const DAYS = 7; // Keep missions for 7 days
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+    const runCleanup = () => {
+      try {
+        const missionsDir = join(this.deps.directory, ".opencode", "missions");
+        if (!existsSync(missionsDir)) return;
+
+        const now = Date.now();
+        const entries = readdirSync(missionsDir, { withFileTypes: true });
+        let cleaned = 0;
+
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          const dirPath = join(missionsDir, entry.name);
+          try {
+            const stat = statSync(dirPath);
+            const ageDays = (now - stat.mtimeMs) / MS_PER_DAY;
+            if (ageDays > DAYS) {
+              rmSync(dirPath, { recursive: true, force: true });
+              cleaned++;
+            }
+          } catch {
+            // Ignore cleanup errors for individual directories
+          }
+        }
+
+        if (cleaned > 0) {
+          console.error(`[opencode-orchestrator] Cleaned up ${cleaned} mission directories older than ${DAYS} days`);
+        }
+      } catch {
+        // Ignore cleanup errors
+      }
+    };
+
+    // Run once at startup, then daily
+    runCleanup();
+    this.cleanupInterval = setInterval(runCleanup, MS_PER_DAY);
+  }
+
+  /** Stop periodic cleanup */
+  stopCleanup(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
   }
 
   /**
@@ -115,6 +178,7 @@ export class MissionController {
       state: "idle",
       todos: [],
       retryCounts: new Map(),
+      memory: [],
     };
 
     this.missions.set(missionId, ctx);
@@ -441,131 +505,195 @@ export class MissionController {
       this.emit(ctx, `💾 Backup created (${backup.type})`, auto);
     }
 
-    let index = 0;
+    const maxWorkers = cfg.maxParallelWorkers ?? 3;
+    const running = new Map<string, Promise<void>>(); // taskId -> promise
     let currentPhase = "";
-    while (index < ctx.todos.length) {
-      const todo = ctx.todos[index];
-      if (todo.status === "completed") { index++; continue; }
+    let phaseGatePending = false;
+    let index = 0;
 
-      // Check dependencies
-      const depsMet = todo.dependsOn.every((depId) => {
-        const dep = ctx.todos.find((t) => t.id === depId);
-        return dep?.status === "completed";
-      });
-      if (!depsMet) {
-        ctx.state = "pending_dependencies";
-        this.emit(ctx, `${todo.id} deferred (waiting dependencies)`, auto);
-        index++;
-        continue;
+    // Helper: find next task that's ready (deps met, not completed, not in_progress, not failed, not already running)
+    const findNextReady = (): { todo: ParsedTodo; index: number } | undefined => {
+      for (let i = 0; i < ctx.todos.length; i++) {
+        const t = ctx.todos[i];
+        if (t.status === "completed" || t.status === "in_progress" || t.status === "failed") continue;
+        if (running.has(t.id)) continue;
+        const depsMet = t.dependsOn.every((depId) => {
+          const dep = ctx.todos.find((dt) => dt.id === depId);
+          return dep?.status === "completed";
+        });
+        if (!depsMet) continue;
+        // Phase gate check: don't dispatch tasks from a new phase while gate is pending
+        if (phaseGatePending && t.phase !== currentPhase) continue;
+        return { todo: t, index: i };
+      }
+      return undefined;
+    };
+
+    // Helper: check if all tasks in current phase are done
+    const isPhaseComplete = (phase: string): boolean => {
+      return ctx.todos
+        .filter((t) => t.phase === phase)
+        .every((t) => t.status === "completed" || t.status === "failed");
+    };
+
+    // Main dispatch loop
+    while (true) {
+      // Check for phase completion and gates
+      if (currentPhase && isPhaseComplete(currentPhase)) {
+        const gateTask = ctx.todos.find((t) => t.phase === currentPhase && t.phaseGate);
+        if (gateTask && gateTask.status === "completed" && !phaseGatePending) {
+          phaseGatePending = true;
+          ctx.state = "hold";
+          const msg = `⛔ PHASE_GATE: Phase "${currentPhase}" is complete. Next phase available. Reply "yes" to continue or "no" to hold.`;
+          this.emit(ctx, msg, auto);
+          writeFileAtomicSync(join(ctx.missionDir, "gate-message.txt"), msg);
+          this.saveMissionState(ctx);
+          // Wait for all running tasks to finish before pausing
+          while (running.size > 0) {
+            await Promise.race(running.values());
+          }
+          return; // Pause mission
+        }
+        // If gate task doesn't exist or is not completed, just move to next phase
       }
 
-      // ---- PHASE GATE ----
-      // Track phase transitions. If entering a new phase, check if previous phase had a gate.
-      if (todo.phase && todo.phase !== currentPhase) {
-        // If previous phase had a gate task, verify it's completed before proceeding
-        if (currentPhase) {
-          const prevPhaseGate = ctx.todos.find((t) =>
-            t.phase === currentPhase && t.phaseGate
-          );
-          if (prevPhaseGate && prevPhaseGate.status !== "completed") {
-            // Gate not completed — hold mission
-            ctx.state = "hold";
-            const msg = `⛔ PHASE_GATE: Phase "${currentPhase}" gate task ${prevPhaseGate.id} not complete. Complete it before proceeding to "${todo.phase}".`;
-            this.emit(ctx, msg, auto);
-            const gatePath = join(ctx.missionDir, "gate-message.txt");
-            writeFileSync(gatePath, msg, "utf-8");
-            this.saveMissionState(ctx);
-            return;
-          }
-          // If gate exists and IS completed, still pause for user confirmation
-          if (prevPhaseGate && prevPhaseGate.status === "completed") {
-            ctx.state = "hold";
-            const msg = `⛔ PHASE_GATE: Phase "${currentPhase}" is complete. Next: "${todo.phase}". Reply "yes" to continue or "no" to hold.`;
-            this.emit(ctx, msg, auto);
-            const gatePath = join(ctx.missionDir, "gate-message.txt");
-            writeFileSync(gatePath, msg, "utf-8");
-            this.saveMissionState(ctx);
-            return;
-          }
-        }
-        currentPhase = todo.phase;
-      }
+      // Try to dispatch new tasks
+      while (running.size < maxWorkers && !phaseGatePending) {
+        const next = findNextReady();
+        if (!next) break;
 
-      // ---- NORMAL EXECUTION ----
-      ctx.state = "executing";
-      const resolvedAgent = resolveAgentAlias(todo.agent, names);
-      this.emit(ctx, `Delegating ${todo.id} to ${resolvedAgent}`, auto);
+        const { todo, index: todoIndex } = next;
 
-      try {
-        const session = await this.createSession(resolvedAgent, `${todo.id}: ${todo.description.slice(0, 40)}`, todo.id, ctx.slug);
-        await this.promptSession(session.id, resolvedAgent, this.buildTaskPrompt(todo, cfg, names, ctx.slug));
-
-        if (auto) {
-          await this.pollSession(session.id);
-        }
-
-        if (todo.criticalPath) {
-          ctx.state = "auditing";
-          const auditPassed = await this.runAudit(todo, names.auditor, ctx);
-          if (!auditPassed) {
-            // Audit failed — mark task failed and trigger retry logic
-            updateTodoStatus(this.deps.directory, todo.id, "failed", "Audit failed — acceptance criteria not met", ctx.slug);
-            ctx.todos[index] = { ...todo, status: "failed" };
-            this.emit(ctx, `${todo.id} audit FAILED`, auto);
-            // Trigger retry if retries remain
-            const retries = ctx.retryCounts.get(todo.id) ?? 0;
-            if (retries < cfg.maxRetries) {
-              ctx.retryCounts.set(todo.id, retries + 1);
-              ctx.state = "retrying";
-              this.emit(ctx, `${todo.id} retrying after failed audit (attempt ${retries + 1})`, auto);
-              await sleep(1000 * Math.pow(2, retries));
-              continue;
+        // Phase transition detection
+        if (todo.phase && todo.phase !== currentPhase) {
+          // Check previous phase gate
+          if (currentPhase) {
+            const prevGate = ctx.todos.find((t) => t.phase === currentPhase && t.phaseGate);
+            if (prevGate && prevGate.status !== "completed") {
+              this.emit(ctx, `${todo.id} deferred: phase "${currentPhase}" gate not complete`, auto);
+              break;
             }
           }
+          currentPhase = todo.phase;
         }
 
-        updateTodoStatus(this.deps.directory, todo.id, "completed", `Done by ${resolvedAgent}`, ctx.slug);
-        ctx.todos[index] = { ...todo, status: "completed" };
-        this.emit(ctx, `${todo.id} completed`, auto);
+        // Mark in_progress
+        todo.status = "in_progress";
+        updateTodoStatus(this.deps.directory, todo.id, "in_progress", undefined, ctx.slug);
+        ctx.state = "executing";
+        this.emit(ctx, `Delegating ${todo.id} to ${resolveAgentAlias(todo.agent, names)}`, auto);
 
-        // ---- PHASE GATE HANDLING (if this task IS the gate) ----
-        if (todo.phaseGate) {
-          ctx.state = "hold";
-          this.emit(ctx, `⛔ PHASE_GATE: Phase "${todo.phase}" is complete. Reply "yes" to continue to the next phase or "no" to hold.`, auto);
-          this.saveMissionState(ctx);
-          return; // EXIT executeTodos, mission controller pauses
-        }
-      } catch (err) {
-        const retries = ctx.retryCounts.get(todo.id) ?? 0;
-        if (retries < cfg.maxRetries) {
-          ctx.retryCounts.set(todo.id, retries + 1);
-          ctx.state = "retrying";
-          this.emit(ctx, `${todo.id} failed (attempt ${retries + 1}), retrying...`, auto);
-          await sleep(1000 * Math.pow(2, retries));
-          continue; // Retry same task
-        } else {
-          updateTodoStatus(this.deps.directory, todo.id, "failed", String(err), ctx.slug);
-          ctx.todos[index] = { ...todo, status: "failed" };
-          this.emit(ctx, `${todo.id} failed permanently`, auto);
-        }
+        // Dispatch task
+        const promise = this.runTask(todo, todoIndex, ctx, cfg, names, auto)
+          .finally(() => running.delete(todo.id));
+        running.set(todo.id, promise);
       }
 
-      index++;
-      this.saveMissionState(ctx);
+      // If nothing running and nothing ready, we're done
+      if (running.size === 0) break;
+
+      // Wait for at least one task to complete
+      await Promise.race(running.values());
     }
 
-    const allFailed = ctx.todos.every((t) => {
-      if (t.status === "failed") return true;
-      // Check if all dependencies of this pending task have failed
-      if (t.status === "pending") {
-        return t.dependsOn.length > 0 && t.dependsOn.every((depId) => {
-          const dep = ctx.todos.find((dt) => dt.id === depId);
-          return dep?.status === "failed";
-        });
+    // Final state check
+    const anyFailed = ctx.todos.some((t) => t.status === "failed");
+    const allDone = ctx.todos.every((t) => t.status === "completed" || t.status === "failed");
+    if (allDone) {
+      ctx.state = anyFailed ? "failed" : "completed";
+      ctx.completedAt = Date.now();
+    }
+    this.saveMissionState(ctx);
+  }
+
+  /** Execute a single task with full error handling and memory accumulation */
+  private async runTask(todo: ParsedTodo, index: number, ctx: MissionCtx, cfg: ReturnType<typeof loadOrchestratorConfig>, names: ReturnType<typeof loadOrchestratorConfig>["names"], auto: boolean): Promise<void> {
+    const resolvedAgent = resolveAgentAlias(todo.agent, names);
+    const maxRetries = cfg.maxRetries ?? 2;
+
+    try {
+      const session = await this.createSession(resolvedAgent, `${todo.id}: ${todo.description.slice(0, 40)}`, todo.id, ctx.slug);
+
+      // Inject mission memory into prompt
+      const memory = this.buildMemoryContext(ctx);
+      const basePrompt = this.buildTaskPrompt(todo, cfg, names, ctx.slug);
+      const prompt = memory ? `${memory}\n\n---\n\n${basePrompt}` : basePrompt;
+
+      await this.promptSession(session.id, resolvedAgent, prompt);
+
+      if (auto) {
+        await this.pollSession(session.id);
       }
-      return false;
+
+      // Audit if critical path
+      if (todo.criticalPath) {
+        ctx.state = "auditing";
+        const auditPassed = await this.runAudit(todo, names.auditor, ctx);
+        if (!auditPassed) {
+          const retries = ctx.retryCounts.get(todo.id) ?? 0;
+          if (retries < maxRetries) {
+            ctx.retryCounts.set(todo.id, retries + 1);
+            this.emit(ctx, `${todo.id} audit failed, retry ${retries + 1}/${maxRetries}`, auto);
+            await sleep(1000 * Math.pow(2, retries));
+            // Re-dispatch same task
+            return this.runTask(todo, index, ctx, cfg, names, auto);
+          }
+          // Max retries exceeded
+          updateTodoStatus(this.deps.directory, todo.id, "failed", `Audit failed after ${maxRetries} retries`, ctx.slug);
+          ctx.todos[index] = { ...todo, status: "failed" };
+          this.addTaskMemory(ctx, todo.id, resolvedAgent, "Audit failed — acceptance criteria not met", [], [`Failed after ${maxRetries} retries`]);
+          this.emit(ctx, `${todo.id} audit FAILED permanently`, auto);
+          return;
+        }
+      }
+
+      // Success
+      updateTodoStatus(this.deps.directory, todo.id, "completed", `Done by ${resolvedAgent}`, ctx.slug);
+      ctx.todos[index] = { ...todo, status: "completed" };
+      this.addTaskMemory(ctx, todo.id, resolvedAgent, todo.description, [], []);
+      this.emit(ctx, `${todo.id} completed`, auto);
+
+    } catch (err) {
+      const retries = ctx.retryCounts.get(todo.id) ?? 0;
+      if (retries < maxRetries) {
+        ctx.retryCounts.set(todo.id, retries + 1);
+        this.emit(ctx, `${todo.id} failed (${String(err).slice(0, 100)}), retry ${retries + 1}/${maxRetries}`, auto);
+        await sleep(1000 * Math.pow(2, retries));
+        return this.runTask(todo, index, ctx, cfg, names, auto);
+      }
+      // Max retries exceeded — mark failed but DON'T break other tasks
+      updateTodoStatus(this.deps.directory, todo.id, "failed", String(err).slice(0, 200), ctx.slug);
+      ctx.todos[index] = { ...todo, status: "failed" };
+      this.addTaskMemory(ctx, todo.id, resolvedAgent, `Failed: ${String(err).slice(0, 100)}`, [], [String(err).slice(0, 200)]);
+      this.emit(ctx, `${todo.id} failed permanently after ${maxRetries} retries`, auto);
+    }
+  }
+
+  /** Build memory context string from previous task memories */
+  private buildMemoryContext(ctx: MissionCtx): string | undefined {
+    if (!ctx.memory || ctx.memory.length === 0) return undefined;
+    const entries = ctx.memory.slice(-5); // Last 5 tasks
+    const lines = ["## Mission Context (Previous Tasks)", ""];
+    for (const m of entries) {
+      lines.push(`- **${m.taskId}** (${m.agent}): ${m.summary}`);
+      if (m.filesChanged.length) lines.push(`  - Files: ${m.filesChanged.join(", ")}`);
+      if (m.issues.length) lines.push(`  - Issues: ${m.issues.join("; ")}`);
+    }
+    lines.push("", "Use this context to avoid duplicating work or re-introducing already-fixed issues.");
+    return lines.join("\n");
+  }
+
+  /** Add a task memory entry */
+  private addTaskMemory(ctx: MissionCtx, taskId: string, agent: string, summary: string, filesChanged: string[], issues: string[]) {
+    if (!ctx.memory) ctx.memory = [];
+    ctx.memory.push({
+      taskId,
+      agent,
+      summary,
+      filesChanged,
+      issues,
+      timestamp: Date.now(),
     });
-    if (allFailed) ctx.state = "failed";
   }
 
   private async runAudit(todo: ParsedTodo, auditorName: string, ctx: MissionCtx): Promise<boolean> {
@@ -874,7 +1002,6 @@ export class MissionController {
 
   private saveMissionState(ctx: MissionCtx) {
     const path = join(ctx.missionDir, "state.json");
-    const tmpPath = `${path}.tmp`;
     const data = JSON.stringify({
       missionId: ctx.missionId,
       slug: ctx.slug,
@@ -882,11 +1009,10 @@ export class MissionController {
       state: ctx.state,
       todos: ctx.todos,
       completedAt: ctx.completedAt,
+      memory: ctx.memory,
     }, null, 2);
-    // Atomic write: write temp, then rename
     try {
-      writeFileSync(tmpPath, data, "utf-8");
-      renameSync(tmpPath, path);
+      writeFileAtomicSync(path, data);
     } catch (err) {
       console.error(`[opencode-orchestrator] Failed to save mission state:`, err);
     }

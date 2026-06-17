@@ -1,5 +1,6 @@
 import { readFileSync, existsSync, writeFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { writeFileAtomicSync } from "./atomic.js";
 
 export interface ParsedTodo {
   id: string;
@@ -123,7 +124,7 @@ export function parseTodos(directory: string, slug?: string): ParsedTodo[] {
 export function updateTodoStatus(
   directory: string,
   taskId: string,
-  status: "completed" | "failed",
+  status: "completed" | "failed" | "in_progress",
   evidence?: string,
   slug?: string
 ): void {
@@ -131,14 +132,14 @@ export function updateTodoStatus(
   if (!existsSync(path)) return;
 
   let content = readFileSync(path, "utf-8");
-  const marker = status === "completed" ? "x" : " ";
+  const marker = status === "completed" ? "x" : status === "in_progress" ? "~" : " ";
 
   // Find the line containing this taskId and replace its checkbox
   const lines = content.split("\n");
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line.includes(`${taskId}:`)) {
-      lines[i] = line.replace(/^- \[(?: |x)\]/, `- [${marker}]`);
+      lines[i] = line.replace(/^- \[(?: |x|~)\]/, `- [${marker}]`);
       if (evidence) {
         lines.splice(i + 1, 0, `  - Evidence: ${evidence}`);
         i++; // skip the inserted line
@@ -147,7 +148,7 @@ export function updateTodoStatus(
     }
   }
 
-  writeFileSync(path, lines.join("\n"), "utf-8");
+  writeFileAtomicSync(path, lines.join("\n"));
 }
 
 /** Export parsed todos to a JSON file for programmatic access */

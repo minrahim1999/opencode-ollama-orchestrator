@@ -542,6 +542,30 @@ Call the **revert_mission** tool with the mission slug to restore the pre-missio
 
 **Note:** If you want to manually revert using OpenCode's built-in tools, use `git stash list` to find the `opencode-backup:*` stash and `git stash pop` it. The orchestrator's stash includes `--include-untracked` so new files are also captured.
 
+### Todo file corrupted during parallel execution
+
+**Symptom:** Running multiple tasks in parallel causes todo file corruption — some tasks appear as both completed and pending, or evidence lines are duplicated.
+
+**Fix:** Upgrade to **v2.1.15+**. All todo updates and mission state saves now use atomic writes (temp file + rename). The `in_progress` status `[~]` is also tracked so you can see which tasks are actively running.
+
+### One task failure aborts entire mission
+
+**Symptom:** A single task fails (engineer error, model timeout, etc.) and the whole mission stops. Other ready tasks never execute.
+
+**Fix:** Upgrade to **v2.1.15+**. Tasks now run in parallel with isolated failure handling. Each task retries independently with exponential backoff. If max retries exceeded, that task is marked failed and the mission continues with remaining tasks. Final state is "completed" if any task succeeds.
+
+### Engineers re-read the same files for every task
+
+**Symptom:** Each engineer session starts from scratch, re-reading files that previous engineers already analyzed. Wastes tokens and time.
+
+**Fix:** Upgrade to **v2.1.15+**. A mission `memory` array accumulates context from completed tasks (last 5 tasks). Each new task prompt includes a "Mission Context (Previous Tasks)" section with summaries, files changed, and issues from prior tasks. Engineers see what was already done and avoid duplicating work.
+
+### Mission directories growing forever
+
+**Symptom:** `.opencode/missions/` accumulates hundreds of directories, consuming disk space.
+
+**Fix:** Upgrade to **v2.1.15+**. Mission directories older than 7 days are automatically cleaned up at startup and daily thereafter.
+
 ---
 
 ## Built-in Agent Isolation
@@ -562,6 +586,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **2.1.15** | 2026-06-17 | Parallel execution, task failure isolation, mission memory, atomic writes, auto-cleanup |
 | **2.1.14** | 2026-06-17 | Pre-mission backup + revert_mission tool |
 | **2.1.13** | 2026-06-17 | Model fallback, session tracking, abort/skip/resume/watchdog tools |
 | **2.1.12** | 2026-06-17 | Question tool instruction in all agent prompts (interactive modals) |

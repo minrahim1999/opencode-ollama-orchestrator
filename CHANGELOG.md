@@ -4,6 +4,21 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.15] - 2026-06-17
+
+### Added
+- **True parallel execution** — `executeTodos()` now dispatches tasks concurrently up to `maxParallelWorkers` (default 3). Tasks with met dependencies run in parallel; tasks blocked by dependencies or phase gates wait. Uses a task queue with `Promise.race` for completion tracking.
+- **Task-level failure isolation** — One task failing no longer breaks the whole mission. Failed tasks are marked, retried with exponential backoff, and if max retries exceeded, the mission continues with remaining tasks. Final state is "completed" if any task succeeds, "failed" only if all tasks fail.
+- **Mission memory / cross-task context** — Each mission accumulates a `memory` array of `TaskMemoryEntry` objects (taskId, agent, summary, filesChanged, issues, timestamp). The last 5 completed tasks are injected into each new task's prompt as "Mission Context (Previous Tasks)" to prevent duplicate work and re-introducing fixed issues.
+- **Atomic file writes** — New `src/utils/atomic.ts` with `writeFileAtomicSync()` (write to temp, then rename). All todo updates and mission state saves use atomic writes to prevent race conditions during parallel execution.
+- **In-progress task tracking** — Todo checkboxes now show `[~]` for tasks currently being executed (`in_progress` status). The regex handles `[ ]`, `[x]`, and `[~]` states.
+- **Automatic mission cleanup** — Old mission directories in `.opencode/missions/` are auto-deleted after 7 days. Runs once at startup and daily thereafter.
+
+### Changed
+- `executeTodos()` completely rewritten from sequential `while` loop to parallel dispatch loop with worker pool pattern.
+- `updateTodoStatus()` signature extended to accept `"in_progress"` status.
+- `MissionCtx` now includes optional `memory` field.
+
 ## [2.1.14] - 2026-06-17
 
 ### Added
