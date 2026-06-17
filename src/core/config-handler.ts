@@ -258,12 +258,40 @@ export function createConfigHandler(deps: ConfigHandlerDeps) {
     ]);
 
     // Resolve plugin options from opencode.json
-    const pluginOpts: PluginConfig =
-      config.plugin?.find?.(
-        (p: any) =>
-          p === "opencode-ollama-orchestrator" ||
-          (Array.isArray(p) && p[0] === "opencode-ollama-orchestrator")
-      )?.[1] ?? {};
+    // Validate plugin block is an array to prevent .find() crash
+    if (!config.plugin || !Array.isArray(config.plugin)) {
+      console.warn("[opencode-ollama-orchestrator] Plugin config missing or not an array. Using defaults.");
+      config.plugin = [];
+    }
+
+    const rawPluginBlock: any = (config.plugin as any[]).find(
+      (p: any) =>
+        p === "opencode-ollama-orchestrator" ||
+        (Array.isArray(p) && p[0] === "opencode-ollama-orchestrator")
+    );
+
+    // Sanitize plugin options — crash protection
+    let pluginOpts: PluginConfig = rawPluginBlock?.[1] ?? {};
+    if (pluginOpts === null || typeof pluginOpts !== "object") {
+      console.warn("[opencode-ollama-orchestrator] Plugin options invalid. Using defaults.");
+      pluginOpts = {};
+    }
+    if (pluginOpts.agents !== undefined && (typeof pluginOpts.agents !== "object" || Array.isArray(pluginOpts.agents))) {
+      console.warn(`[opencode-ollama-orchestrator] agents must be an object, got ${typeof pluginOpts.agents}. Ignoring.`);
+      pluginOpts.agents = undefined;
+    }
+    if (pluginOpts.maxRetries !== undefined && typeof pluginOpts.maxRetries !== "number") {
+      console.warn(`[opencode-ollama-orchestrator] maxRetries must be a number, got ${typeof pluginOpts.maxRetries}. Using default.`);
+      pluginOpts.maxRetries = undefined;
+    }
+    if (pluginOpts.maxParallelWorkers !== undefined && typeof pluginOpts.maxParallelWorkers !== "number") {
+      console.warn(`[opencode-ollama-orchestrator] maxParallelWorkers must be a number, got ${typeof pluginOpts.maxParallelWorkers}. Using default.`);
+      pluginOpts.maxParallelWorkers = undefined;
+    }
+    if (pluginOpts.maxSubagentDepth !== undefined && typeof pluginOpts.maxSubagentDepth !== "number") {
+      console.warn(`[opencode-ollama-orchestrator] maxSubagentDepth must be a number, got ${typeof pluginOpts.maxSubagentDepth}. Using default.`);
+      pluginOpts.maxSubagentDepth = undefined;
+    }
 
     const names = resolveAgentNames(pluginOpts?.agents);
 

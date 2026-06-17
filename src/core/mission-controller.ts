@@ -11,7 +11,7 @@ import type { EventHandlerDeps } from "./types.js";
 import { loadOrchestratorConfig, resolveAgentAlias } from "../utils/constants.js";
 import { ensureProjectDirs, getMissionDirectory, slugify } from "../utils/paths.js";
 import { parseTodos, updateTodoStatus, exportTodosJson, type ParsedTodo } from "../utils/todo-parser.js";
-import { writeFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { writeFileSync, existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import {
   isDoxInitialized,
@@ -47,6 +47,14 @@ type MissionState =
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 300; // 10 minutes
+
+function parseMissionTimestamp(missionId: string): number {
+  if (!missionId) return Date.now();
+  const parts = missionId.split("-");
+  if (parts.length < 2) return Date.now();
+  const ts = parseInt(parts[parts.length - 1], 10);
+  return Number.isFinite(ts) ? ts : Date.now();
+}
 
 export class MissionController {
   private deps: EventHandlerDeps;
@@ -167,7 +175,7 @@ export class MissionController {
     if ((ctx.state as MissionState) !== "failed") {
       ctx.state = "completed";
       ctx.completedAt = Date.now();
-      this.emit(ctx, `✅ MISSION_COMPLETE ${ctx.completedAt - parseInt(ctx.missionId.split("-")[1])}ms`, auto);
+      this.emit(ctx, `✅ MISSION_COMPLETE ${ctx.completedAt - parseMissionTimestamp(ctx.missionId)}ms`, auto);
     }
 
     // ---- DOX CLOSEOUT ----
@@ -177,7 +185,7 @@ export class MissionController {
         slug,
         missionId,
         description,
-        startedAt: parseInt(missionId.split("-")[1]),
+        startedAt: parseMissionTimestamp(missionId),
         endedAt: Date.now(),
         status: ctx.state === "completed" ? "completed" : "failed",
         todos: ctx.todos.map((t) => ({ id: t.id, description: t.description, status: t.status })),
@@ -207,7 +215,7 @@ export class MissionController {
       if (ctx.state !== "failed") {
         ctx.state = "completed";
         ctx.completedAt = Date.now();
-        this.emit(ctx, `✅ MISSION_RESUMED_COMPLETE ${ctx.completedAt - parseInt(ctx.missionId.split("-")[1])}ms`, true);
+        this.emit(ctx, `✅ MISSION_RESUMED_COMPLETE ${ctx.completedAt - parseMissionTimestamp(ctx.missionId)}ms`, true);
       }
 
       // DOX closeout
@@ -217,7 +225,7 @@ export class MissionController {
           slug: ctx.slug,
           missionId: ctx.missionId,
           description: ctx.description,
-          startedAt: parseInt(ctx.missionId.split("-")[1]),
+          startedAt: parseMissionTimestamp(ctx.missionId),
           endedAt: Date.now(),
           status: ctx.state === "completed" ? "completed" : "failed",
           todos: ctx.todos.map((t) => ({ id: t.id, description: t.description, status: t.status })),
@@ -587,14 +595,22 @@ export class MissionController {
 
   private saveMissionState(ctx: MissionCtx) {
     const path = join(ctx.missionDir, "state.json");
-    writeFileSync(path, JSON.stringify({
+    const tmpPath = `${path}.tmp`;
+    const data = JSON.stringify({
       missionId: ctx.missionId,
       slug: ctx.slug,
       description: ctx.description,
       state: ctx.state,
       todos: ctx.todos,
       completedAt: ctx.completedAt,
-    }, null, 2), "utf-8");
+    }, null, 2);
+    // Atomic write: write temp, then rename
+    try {
+      writeFileSync(tmpPath, data, "utf-8");
+      renameSync(tmpPath, path);
+    } catch (err) {
+      console.error(`[ollama-orchestrator] Failed to save mission state:`, err);
+    }
   }
 
   private emit(ctx: MissionCtx, message: string, auto: boolean) {

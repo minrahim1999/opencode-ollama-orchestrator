@@ -42,25 +42,38 @@ export function createEventHandler(deps: EventHandlerDeps) {
 function looksLikeTaskRequest(text: string): boolean {
   const lower = text.toLowerCase().trim();
 
-  // Contains task keywords
-  const keywords = [
+  // Fast reject: meta commands, very short, or explicit non-task prefixes
+  const isMeta = lower.startsWith("/") || lower.startsWith("opencode") || lower.startsWith("hermes") || lower.startsWith("@");
+  if (isMeta || text.length < 15 || text.split(/\s+/).length < 3) return false;
+
+  // Strong reject: these words mean the user is NOT asking for work
+  const rejectionKeywords = [
+    "cancel", "stop", "abort", "nevermind", "never mind", "disregard",
+    "explain", "what is", "how does", "why is", "tell me", "describe",
+    "ignore", "forget", "don't", "do not", "clear", "reset",
+    "thanks", "thank you", "ok", "okay", "sure", "got it",
+  ];
+  const hasRejection = rejectionKeywords.some((kw) => lower.includes(kw));
+  if (hasRejection) return false;
+
+  // Weak positive signals — only count if combined with a strong keyword
+  const weakSignals = ["please", "help me", "can you"];
+  const hasWeakSignal = weakSignals.some((kw) => lower.includes(kw));
+
+  // Strong positive signals — definitive task request words
+  const strongKeywords = [
     "build", "create", "implement", "add", "refactor", "fix",
     "write", "generate", "convert", "migrate", "setup", "configure",
     "deploy", "integrate", "develop", "design", "optimize", "test",
     "update", "upgrade", "remove", "delete", "change", "modify",
     "code:", "todo:", "mission:", "plan:", "feature:", "bug:",
-    "help me", "can you", "please", "need to", "want to",
+    "need to", "want to", "should we", "let's", "lets",
   ];
+  const hasStrongKeyword = strongKeywords.some((kw) => lower.includes(kw));
 
-  const hasKeyword = keywords.some((kw) => lower.includes(kw));
-
-  // Must be substantive (not "ok" or "thanks")
-  const isSubstantive = text.length >= 15 && text.split(" ").length >= 3;
-
-  // Exclude system / meta messages
-  const isMeta = lower.startsWith("/") || lower.startsWith("opencode") || lower.startsWith("hermes");
-
-  return hasKeyword && isSubstantive && !isMeta;
+  // If user says "help me understand X" — that's weak + no strong keyword → reject
+  // If user says "please help me build X" — that's weak + strong keyword → accept
+  return hasStrongKeyword || (!hasWeakSignal && strongKeywords.some((kw) => lower.includes(kw)));
 }
 
 function shouldIgnore(text: string): boolean {

@@ -4,15 +4,27 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.5] - 2026-06-17
+
+### Improved
+- **Regex robustness** — `looksLikeTaskRequest()` rewritten with clear reject vs accept signals. Rejects: "explain", "what is", "how does", "cancel", "nevermind", "thanks", "ok", "don't" + weak-only signals without strong keywords. Accepts: strong task verbs ("build", "create", "implement", "fix", etc.) + compound signals ("please help me build X"). Also rejects meta prefixes (`@`, `/`, `opencode`, `hermes`).
+- **Config validation** — `config-handler.ts` now validates `config.plugin` is an array before calling `.find()`, validates `pluginOpts` is an object (not null/array), and type-checks numeric fields (`maxRetries`, `maxParallelWorkers`, `maxSubagentDepth`) to prevent runtime crashes from malformed `opencode.json`.
+- **Atomic state writes** — `saveMissionState()` now writes to `.tmp` then `renameSync()` to target, preventing half-written `state.json` on crashes.
+- **Robust mission ID parsing** — `parseMissionTimestamp()` helper parses the last dash-separated segment of `missionId` instead of hardcoded `[1]`, handling custom ID formats safely.
+
+## [2.1.4] - 2026-06-17
+
+### Fixed (5 critical bugs from full audit)
+- **Phase gate bypassed** — Inverted condition (`!prevPhaseGate`) let missions skip phase gates even when incomplete. Fixed gate detection to properly check both incomplete and completed gates.
+- **Session never tracked** — `createSession()` didn't add sessions to `deps.sessions`, so `pollSession()` returned instantly (no wait). Now tracks all sessions properly.
+- **Audit results ignored** — `runAudit()` had no return value; critical-path tasks always marked as completed regardless of audit failure. Now returns `boolean`, fails the task on audit failure, and triggers retry if retries remain.
+- **Dead-locked missions never fail** — Pending tasks with all-failed dependencies kept the mission alive forever. Now counts dependency-blocked pending tasks as "failed" for mission state resolution.
+- **resume() missing DOX closeout** — Resumed missions never archived DOX runs or cleaned up the `missions` map. Now mirrors `start()` finalization: DOX closeout + `missions.delete()`.
+- **Event handler crash** — Unwrapped `controller.start()` could crash the plugin host. Now wrapped in `try/catch`.
+- **abort() no persistence** — Aborted state lost on restart. Now calls `saveMissionState()`.
+- **pollSession blind** — Only polled local session map, never used SDK `session.status()`. Now tries SDK API first, falls back to local map.
+
 ## [2.1.2] - 2026-06-17
-
-### Fixed
-- **Agent model switching broken** — `SessionCreateData` has no `agent` field; `agent` is only valid in `SessionPromptData`. Previously all subagent sessions silently ran as the default model (strategist's deepseek-v4-pro). Now each role correctly uses its own model: architect=gemini-3-flash-preview, engineer=kimi-k2.7-code, auditor=kimi-k2.6, specialist=kimi-k2.6.
-
-### Added
-- **Toast notifications** — `emit()` now calls `client.tui.showToast()` for visual feedback on mission progress, phase gates, completions, and failures. Maps message content to variants: success (complete), warning (retry/stuck/phase-gate), error (failure), info (everything else). Fire-and-forget: never blocks mission execution.
-
-## [2.1.1] - 2026-06-17
 
 ### Fixed
 - **Plugin init hang** — `lockProviderToOllama()` called `client.config.get()` during plugin initialization, which blocks indefinitely when the SDK client isn't fully ready. Now reads agent models directly from the config file instead of via SDK call.
