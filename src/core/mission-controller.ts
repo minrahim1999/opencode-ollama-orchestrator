@@ -42,7 +42,8 @@ type MissionState =
   | "auditing"
   | "completed"
   | "failed"
-  | "retrying";
+  | "retrying"
+  | "hold";
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 300; // 10 minutes
@@ -195,7 +196,7 @@ export class MissionController {
    */
   async resume(): Promise<void> {
     const active = Array.from(this.missions.values()).filter(
-      (ctx) => ctx.state === "pending_dependencies" || ctx.state === "executing" || ctx.state === "retrying"
+      (ctx) => ctx.state === "pending_dependencies" || ctx.state === "executing" || ctx.state === "retrying" || ctx.state === "hold"
     );
     for (const ctx of active) {
       const cfg = loadOrchestratorConfig(this.deps.directory);
@@ -241,6 +242,7 @@ export class MissionController {
 
   private async executeTodos(ctx: MissionCtx, cfg: ReturnType<typeof loadOrchestratorConfig>, names: ReturnType<typeof loadOrchestratorConfig>["names"], auto: boolean) {
     let index = 0;
+    let currentPhase = "";
     while (index < ctx.todos.length) {
       const todo = ctx.todos[index];
       if (todo.status === "completed") { index++; continue; }
@@ -257,6 +259,26 @@ export class MissionController {
         continue;
       }
 
+      // ---- PHASE GATE ----
+      // When entering a new phase and the PREVIOUS phase had a gate task, stop and ask user
+      if (todo.phase && todo.phase !== currentPhase) {
+        const prevPhaseGate = ctx.todos.find((t) => t.phase === currentPhase && t.phaseGate && t.status !== "completed");
+        if (currentPhase && !prevPhaseGate) {
+          const gateTask = ctx.todos.find((t) => t.phase === currentPhase && t.phaseGate && t.status === "completed");
+          if (gateTask) {
+            ctx.state = "hold";
+            const msg = `⛔ PHASE_GATE: Phase "${currentPhase}" is complete. Next: "${todo.phase}". Reply "yes" to continue or "no" to hold.`;
+            this.emit(ctx, msg, auto);
+            const gatePath = join(ctx.missionDir, "gate-message.txt");
+            writeFileSync(gatePath, msg, "utf-8");
+            this.saveMissionState(ctx);
+            return;
+          }
+        }
+        currentPhase = todo.phase;
+      }
+
+      // ---- NORMAL EXECUTION ----
       ctx.state = "executing";
       const resolvedAgent = resolveAgentAlias(todo.agent, names);
       this.emit(ctx, `Delegating ${todo.id} to ${resolvedAgent}`, auto);
@@ -277,6 +299,14 @@ export class MissionController {
         updateTodoStatus(this.deps.directory, todo.id, "completed", `Done by ${resolvedAgent}`);
         ctx.todos[index] = { ...todo, status: "completed" };
         this.emit(ctx, `${todo.id} completed`, auto);
+
+        // ---- PHASE GATE HANDLING (if this task IS the gate) ----
+        if (todo.phaseGate) {
+          ctx.state = "hold";
+          this.emit(ctx, `⛔ PHASE_GATE: Phase "${todo.phase}" is complete. Reply "yes" to continue to the next phase or "no" to hold.`, auto);
+          this.saveMissionState(ctx);
+          return; // EXIT executeTodos, mission controller pauses
+        }
       } catch (err) {
         const retries = ctx.retryCounts.get(todo.id) ?? 0;
         if (retries < cfg.maxRetries) {
@@ -380,19 +410,28 @@ export class MissionController {
     const lines = content.split("\n");
     const todos: ParsedTodo[] = [];
     let current: Partial<ParsedTodo> | null = null;
+    let currentPhase = "";
     for (const line of lines) {
       const trimmed = line.trim();
-      const todoMatch = trimmed.match(/^- \[( |x)\] (TASK-\d+): (.+?)\s*\(@(\w+)\s*(?:,\s*critical-path:\s*(yes|no))?\)/i);
+      const phaseMatch = trimmed.match(/^## Phase \d+:\s*(.+)/i);
+      if (phaseMatch) {
+        currentPhase = phaseMatch[1].trim();
+        continue;
+      }
+      const todoMatch = trimmed.match(/^- \[( |x)\] (TASK-\d+): (.+?)\s*\(@(\w+)\s*(.*?)\)/i);
       if (todoMatch) {
         if (current) todos.push(current as ParsedTodo);
+        const metaStr = todoMatch[5];
         current = {
           status: todoMatch[1] === "x" ? "completed" : "pending",
           id: todoMatch[2],
           description: todoMatch[3].trim(),
           agent: todoMatch[4],
-          criticalPath: todoMatch[5]?.toLowerCase() === "yes",
+          criticalPath: /critical-path:\s*yes/i.test(metaStr),
+          phaseGate: /phase-gate:\s*yes/i.test(metaStr),
           dependsOn: [],
           acceptanceCriteria: [],
+          phase: currentPhase,
         };
         continue;
       }

@@ -4,6 +4,24 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-06-17
+
+### Added
+- **Phase Gates** — Multi-phase missions can pause between phases for user review. Architect marks tasks with `phase-gate: yes` to trigger gates.
+- **Mission HOLD state** — New state `hold` that pauses execution between phases. Strategist asks user for continuation.
+- **Phase Gate Protocol** — On `yes` → resume next phase. On `no` → stay in hold. On change requests → Specialist replans remaining phases.
+- **Phase-aware todo parser** — Extracts `phase` name from `## Phase N: Name` headers and `phaseGate` flag from todo metadata.
+- **Gate message persistence** — Phase gate messages written to `.opencode/plans/{slug}/gate-message.txt` for Strategist to present to user after compaction.
+- **Strategist prompt updated** — Steps 9-12 detail phase gate handling. Rules instruct to never skip gates.
+- **Architect prompt updated** — Phase Gate Rules section instructs when and how to place `phase-gate: yes`.
+- **Event handler** — `yes` and `no` are no longer ignored as casual chat, so they can trigger gate responses.
+
+### Changed
+- **MissionController.executeTodos** — Tracks `currentPhase`. Detects phase transitions and checks for completed gates before continuing.
+- **MissionController.resume** — Now includes `hold` state in resumable states.
+- **Todo parser regex** — Updated to capture `phase-gate: yes/no` in addition to `critical-path: yes/no`.
+- **Todo parser phase extraction** — Parses `## Phase N: Name` headers and assigns phase names to todos.
+
 ## [2.0.1] - 2026-06-17
 
 ### Added

@@ -12,8 +12,19 @@ There are NO slash commands. The user simply describes what they want, and YOU a
 6. Dispatch up to 3 Engineers in PARALLEL (Ollama Pro limit = 3 concurrent)
 7. For each completed critical-path task → spawn Auditor automatically
 8. If ANY task stalls for > 10 min or loops > 3 times → activate Specialist for diagnosis
-9. When all todos done → summarize deliverables to user
-10. If ALL tasks fail → diagnose root cause, propose simplified scope
+9. When Engineer completes a task with phase-gate: yes → PAUSE mission, present gate message to user. Wait for reply. Do NOT proceed to next phase until user confirms.
+10. If user replies "yes" / "continue" / "proceed" → call MissionController.resume() to resume execution
+11. If user replies "no" / "hold" / "stop" → keep mission in HOLD state, summarize current progress to user
+12. If user requests changes during a hold → call Specialist to replan remaining phases
+13. When all todos done → summarize deliverables to user
+14. If ALL tasks fail → diagnose root cause, propose simplified scope
+
+## Phase Gate Rules
+- You CANNOT skip phase gates. They exist because the user wants to review before committing resources to the next phase.
+- When a phase gate fires, read the message from .opencode/plans/{slug}/gate-message.txt and present it clearly to the user.
+- If user is unclear (e.g., "maybe", "what's next?") → show the next phase's planned tasks briefly, then re-ask for yes/no.
+- Phase gates ONLY fire when the Architect placed phase-gate: yes on a task. Small single-phase missions run fully automatically without gates.
+- On "yes" → call MissionController.resume() immediately. On "no" → remain in HOLD, log the decision to DOX.
 
 ## Anti-Stuck Behavior
 - Track every task start time. If no completion after 10 minutes, escalate to Specialist

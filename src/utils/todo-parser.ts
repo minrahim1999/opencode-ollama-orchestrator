@@ -6,9 +6,11 @@ export interface ParsedTodo {
   description: string;
   agent: string;
   criticalPath: boolean;
+  phaseGate: boolean;
   dependsOn: string[];
   acceptanceCriteria: string[];
   status: "pending" | "in_progress" | "completed" | "failed";
+  phase?: string;
 }
 
 /**
@@ -32,23 +34,35 @@ export function parseTodos(directory: string): ParsedTodo[] {
 
   let current: Partial<ParsedTodo> | null = null;
 
+  let currentPhase = "";
+
   for (const line of lines) {
     const trimmed = line.trim();
 
-    // Match todo line: "- [ ] TASK-001: description (@agent, critical-path: yes/no)"
+    // Detect phase header: "## Phase 1: Name"
+    const phaseMatch = trimmed.match(/^## Phase \d+:\s*(.+)/i);
+    if (phaseMatch) {
+      currentPhase = phaseMatch[1].trim();
+      continue;
+    }
+
+    // Match todo line: "- [ ] TASK-001: description (@engineer, critical-path: yes/no, phase-gate: yes/no)"
     const todoMatch = trimmed.match(
-      /^- \[( |x)\] (TASK-\d+): (.+?)\s*\(@(\w+)\s*(?:,\s*critical-path:\s*(yes|no))?\)/i
+      /^- \[( |x)\] (TASK-\d+): (.+?)\s*\(@(\w+)\s*(.*?)\)/i
     );
     if (todoMatch) {
       if (current) todos.push(current as ParsedTodo);
+      const metaStr = todoMatch[5];
       current = {
         status: todoMatch[1] === "x" ? "completed" : "pending",
         id: todoMatch[2],
         description: todoMatch[3].trim(),
         agent: todoMatch[4],
-        criticalPath: todoMatch[5]?.toLowerCase() === "yes",
+        criticalPath: /critical-path:\s*yes/i.test(metaStr),
+        phaseGate: /phase-gate:\s*yes/i.test(metaStr),
         dependsOn: [],
         acceptanceCriteria: [],
+        phase: currentPhase,
       };
       continue;
     }

@@ -33,14 +33,24 @@ TASK-002: description
 If critical tasks fail, what can be safely undone?
 
 ## Todo Format (.opencode/todo/{slug}.md)
-## Phase 1
-- [ ] TASK-001: Description (@engineer, critical-path: yes/no)
+## Phase 1: Setup
+- [ ] TASK-001: Description (@engineer, critical-path: yes/no, phase-gate: yes/no)
   - Acceptance: Verifiable condition
-  - Depends: [TASK-xxx]
+  - Depends: []
 
-- [ ] TASK-002: Description (@engineer, critical-path: yes/no)
-  - Acceptance: Verifiable condition
-  - Depends: [TASK-001]
+## Phase 2: Core Feature
+- [ ] TASK-005: Description (@engineer, critical-path: yes, phase-gate: yes)
+  - Acceptance: All prior phase tests green
+  - Depends: [TASK-004]
+
+## Phase Gate Rules
+- Use phase-gate: yes on the LAST task of each phase OR on a dedicated gate task that verifies phase readiness
+- If phase-gate: yes is present, the Strategist WILL pause after that task and ask the user:
+  "Phase X ({name}) is complete. Continue to Phase Y ({name})? (yes/no/comment)"
+- The user controls progression. No phase proceeds without user approval.
+- If user replies "no", the mission enters a hold state — no new tasks dispatched.
+- If the plan has only ONE phase, or no phase-gate: yes tasks, the mission runs fully automatically.
+- By default, ALL multi-phase plans MUST include at least one phase-gate: yes so the user can review before committing resources.
 
 ## Constraints
 - Max 3 parallel tasks (Ollama Pro limit)

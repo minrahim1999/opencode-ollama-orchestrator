@@ -159,6 +159,44 @@ OpenCode ships with built-in subagents (`compaction`, `explorer`, `worker`, `exe
 2. **Prompt boundaries** — Every agent prompt instructs: "NEVER interact with built-in OpenCode agents."
 3. **Architect naming rule** — Tasks must never be named after built-in agents to avoid namespace confusion.
 
+## Phase Gates: User-Controlled Progression
+
+When the LLM returns a multi-phase plan, you may want to review each phase before the next begins. **Phase gates** give you that control:
+
+| Plan Type | Gate Behavior | User Action |
+|-----------|---------------|-------------|
+| Single-phase (≤1 phase) | No gates | Fully automatic |
+| Multi-phase with `phase-gate: yes` | **Pauses after each phase** | Reply "yes" to continue, "no" to hold |
+| Multi-phase without gates | Runs all phases | Fully automatic |
+
+**How it works:**
+1. Architect writes plan with `phase-gate: yes` on the last task of each phase (or a dedicated verification task)
+2. Engineer executes tasks within a phase in parallel (up to 3 workers)
+3. When a `phase-gate: yes` task completes, the mission enters **HOLD** state
+4. Strategist asks: *"Phase 'Setup' is complete. Continue to 'Core Feature'? (yes/no/comment)"*
+5. **"yes"** → resume to next phase. **"no"** → mission stays in hold, you can request changes
+6. If you request changes during hold, Specialist replans the remaining phases
+
+**Example gated plan:**
+```markdown
+## Phase 1: Database Setup
+- [ ] TASK-001: Create tables (@engineer, critical-path: yes, phase-gate: yes)
+  - Acceptance: Migration runs without errors
+  - Depends: []
+
+## Phase 2: API Implementation
+- [ ] TASK-002: Build REST endpoints (@engineer, critical-path: yes)
+  - Acceptance: All endpoints return 200/201
+  - Depends: [TASK-001]
+- [ ] TASK-003: Add validation middleware (@engineer)
+  - Acceptance: Invalid requests rejected with 400
+  - Depends: [TASK-002]
+```
+
+In this example, the mission pauses after TASK-001 completes. You review the database setup. If satisfied, reply "yes" — Phase 2 tasks dispatch automatically. If not, reply "no" and request fixes.
+
+---
+
 ## State Persistence Across Compaction
 
 OpenCode may compact (truncate) conversation history when context windows fill. Our orchestrator stores state in the file system so compaction never loses mission progress:

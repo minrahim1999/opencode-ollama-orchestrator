@@ -5,7 +5,7 @@
 import { MissionController } from "./mission-controller.js";
 import type { EventHandlerDeps } from "./types.js";
 
-const VERSION = "2.0.0";
+const VERSION = "2.1.0";
 
 export function createEventHandler(deps: EventHandlerDeps) {
   const controller = new MissionController(deps);
@@ -61,6 +61,6 @@ function looksLikeTaskRequest(text: string): boolean {
 
 function shouldIgnore(text: string): boolean {
   const lower = text.toLowerCase().trim();
-  const ignored = ["ok", "yes", "no", "thanks", "thank you", "got it", "nice", "cool", "lol", "haha", "👍", "✅"];
+  const ignored = ["ok", "thanks", "thank you", "got it", "nice", "cool", "lol", "haha", "👍", "✅"];
   return ignored.includes(lower) || text.length < 10;
 }

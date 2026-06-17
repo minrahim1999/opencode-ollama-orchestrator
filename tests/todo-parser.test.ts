@@ -17,24 +17,40 @@ describe("parseTodos", () => {
   });
 
   it("parses a single todo with acceptance criteria", () => {
-    const md = `## Phase 1
-- [ ] TASK-001: Build auth system (@engineer, critical-path: yes)
+    const md = `## Phase 1: Auth Setup
+- [ ] TASK-001: Build auth system (@engineer, critical-path: yes, phase-gate: no)
   - Acceptance: JWT token valid for 24h
   - Acceptance: Password bcrypt rounds >= 12
   - Depends: []
+- [x] TASK-002: Setup db (@engineer, critical-path: no, phase-gate: yes)
+  - Acceptance: Table exists
+  - Depends: [TASK-001]
 `;
     writeFileSync(join(tmpDir, ".opencode", "todos.md"), md, "utf-8");
     const todos = parseTodos(tmpDir);
 
-    expect(todos).toHaveLength(1);
+    expect(todos).toHaveLength(2);
     expect(todos[0]).toMatchObject({
       id: "TASK-001",
       description: "Build auth system",
       agent: "engineer",
       criticalPath: true,
+      phaseGate: false,
       status: "pending",
       dependsOn: [],
       acceptanceCriteria: ["JWT token valid for 24h", "Password bcrypt rounds >= 12"],
+      phase: "Auth Setup",
+    });
+    expect(todos[1]).toMatchObject({
+      id: "TASK-002",
+      description: "Setup db",
+      agent: "engineer",
+      criticalPath: false,
+      phaseGate: true,
+      status: "completed",
+      dependsOn: ["TASK-001"],
+      acceptanceCriteria: ["Table exists"],
+      phase: "Auth Setup",
     });
   });
 
