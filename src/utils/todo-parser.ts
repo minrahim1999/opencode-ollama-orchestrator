@@ -43,13 +43,14 @@ function parseTodoContent(content: string): ParsedTodo[] {
 
     // Match todo line: "- [ ] TASK-001: description (@engineer, critical-path: yes/no, phase-gate: yes/no)"
     const todoMatch = trimmed.match(
-      /^- \[( |x)\] (TASK-\d+): (.+?)\s*\(@(\w+)\s*(.*?)\)/i
+      /^- \[( |x|~)\] (TASK-\d+): (.+?)\s*\(@(\w+)\s*(.*?)\)/i
     );
     if (todoMatch) {
       if (current) todos.push(current as ParsedTodo);
       const metaStr = todoMatch[5];
+      const mark = todoMatch[1];
       current = {
-        status: todoMatch[1] === "x" ? "completed" : "pending",
+        status: mark === "x" ? "completed" : mark === "~" ? "in_progress" : "pending",
         id: todoMatch[2],
         description: todoMatch[3].trim(),
         agent: todoMatch[4],
@@ -158,3 +159,5 @@ export function exportTodosJson(directory: string, todos: ParsedTodo[], slug?: s
     : join(directory, ".opencode", "todos.json");
   writeFileSync(path, JSON.stringify(todos, null, 2), "utf-8");
 }
+
+export { writeFileAtomicSync };

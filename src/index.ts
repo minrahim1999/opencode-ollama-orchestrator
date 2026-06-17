@@ -5,6 +5,7 @@ import { createConfigHandler } from "./core/config-handler.js";
 import { createEventHandler } from "./core/event-handler.js";
 import { MissionController } from "./core/mission-controller.js";
 import { createDelegateTaskTool } from "./tools/delegate-task.js";
+import { Logger } from "./utils/logger.js";
 
 const plugin: Plugin = async (input) => {
   const { client, directory } = input;
@@ -81,7 +82,7 @@ const plugin: Plugin = async (input) => {
     "chat.params": async (_inp, output) => {
       const model = output.options?.model as string | undefined;
       if (model) {
-        console.error(`[opencode-orchestrator] Chat model resolved to: ${model}`);
+        Logger.log("info", "plugin", `Chat model resolved to: ${model}`, { model });
       }
     },
   };

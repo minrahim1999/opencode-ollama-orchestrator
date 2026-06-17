@@ -13,6 +13,7 @@ import { ensureProjectDirs, getMissionDirectory, slugify } from "../utils/paths.
 import { parseTodos, updateTodoStatus, exportTodosJson, type ParsedTodo } from "../utils/todo-parser.js";
 import { createBackup, revertBackup, deleteBackup } from "../utils/backup.js";
 import { writeFileAtomicSync } from "../utils/atomic.js";
+import { Logger } from "../utils/logger.js";
 import { readFileSync, existsSync, writeFileSync, mkdirSync, renameSync, readdirSync, statSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -108,6 +109,7 @@ export class MissionController {
 
   constructor(deps: EventHandlerDeps) {
     this.deps = deps;
+    Logger.init(deps.directory, "info");
     this.loadMissionsFromDisk();
     this.startCleanup();
     this.startMemoryPurge();
@@ -144,7 +146,7 @@ export class MissionController {
         }
 
         if (cleaned > 0) {
-          console.error(`[opencode-orchestrator] Cleaned up ${cleaned} mission directories older than ${DAYS} days`);
+          Logger.log("info", "mission-controller", `Cleaned up ${cleaned} mission directories older than ${DAYS} days`);
         }
       } catch {
         // Ignore cleanup errors
@@ -198,7 +200,7 @@ export class MissionController {
         }
       }
       if (restored > 0) {
-        console.error(`[opencode-orchestrator] Restored ${restored} missions from disk`);
+        Logger.log("info", "mission-controller", `Restored ${restored} missions from disk`);
       }
     } catch {
       // Ignore read errors
@@ -219,7 +221,7 @@ export class MissionController {
           }
         }
         if (purged > 0) {
-          console.error(`[opencode-orchestrator] Purged ${purged} completed missions from memory`);
+          Logger.log("info", "mission-controller", `Purged ${purged} completed missions from memory`);
         }
       } catch {
         // Ignore
@@ -232,7 +234,7 @@ export class MissionController {
   /** Graceful shutdown: wait for tasks, save states, exit */
   private setupShutdownHandlers(): void {
     const shutdown = async (signal: string) => {
-      console.error(`[opencode-orchestrator] Received ${signal}, shutting down gracefully`);
+      Logger.log("warn", "mission-controller", `Received ${signal}, shutting down gracefully`);
       this.stopCleanup();
       // Wait for running tasks with 30s timeout
       if (this.runningTasks.size > 0) {
@@ -247,10 +249,11 @@ export class MissionController {
           console.error("[opencode-orchestrator] Task drain timed out, saving state and exiting");
         }
       }
-      for (const ctx of this.missions.values()) {
+      for (const [, ctx] of Array.from(this.missions.entries())) {
         if (!ctx.completedAt) this.saveMissionState(ctx);
       }
       process.exit(0);
+    Logger.stop();
     };
     process.once("SIGTERM", () => shutdown("SIGTERM"));
     process.once("SIGINT", () => shutdown("SIGINT"));
@@ -431,7 +434,7 @@ export class MissionController {
       this.missions.delete(ctx.missionId);
       return;
     }
-    console.error("[opencode-orchestrator] No resumable mission found.");
+    Logger.log("warn", "mission-controller", "No resumable mission found");
   }
 
   /** Abort all active missions */
@@ -447,7 +450,7 @@ export class MissionController {
         this.deps.sessions.set(sid, { ...state, active: false });
       }
     }
-    console.error("[opencode-orchestrator] All missions aborted.");
+    Logger.log("warn", "mission-controller", "All missions aborted");
   }
 
   /** Abort a specific mission by slug */
@@ -462,7 +465,7 @@ export class MissionController {
             this.deps.sessions.set(sid, { ...sess, active: false });
           }
         }
-        console.error(`[opencode-orchestrator] Mission '${slug}' aborted.`);
+        Logger.log("warn", "mission-controller", `Mission ${slug} aborted`, { mission: slug });
         return true;
       }
     }
@@ -559,7 +562,7 @@ export class MissionController {
         return ok;
       }
     }
-    console.error(`[opencode-orchestrator] Mission ${slug} not found for revert.`);
+    Logger.log("warn", "mission-controller", `Mission ${slug} not found for revert`);
     return false;
   }
 
@@ -930,7 +933,7 @@ export class MissionController {
     // Check circuit breaker
     const failures = this.modelFailures.get(modelKey) ?? 0;
     if (failures >= 5) {
-      console.error(`[opencode-orchestrator] Circuit breaker OPEN for ${modelKey} (${failures} failures). Skipping to fallback.`);
+      Logger.log("warn", "circuit-breaker", `Circuit breaker OPEN for ${modelKey}`, { failures, action: "skip_to_fallback" });
       this.brokenModels.add(modelKey);
     } else {
       // Try primary model
@@ -942,13 +945,13 @@ export class MissionController {
             agent,
             model: modelObj,
           };
-          console.error(`[opencode-orchestrator] createSession for ${agent} with model ${modelObj.providerID}/${modelObj.modelID}`);
+          Logger.log("info", "session", `createSession for ${agent}`, { model: `${modelObj.providerID}/${modelObj.modelID}`, primary: true });
           session = await this.deps.client.v2.session.create(opts);
         } catch (err) {
           lastError = err as Error;
           const failCount = (this.modelFailures.get(modelKey) ?? 0) + 1;
           this.modelFailures.set(modelKey, failCount);
-          console.error(`[opencode-orchestrator] createSession primary model failed (${failCount}/5): ${(err as Error).message}`);
+          Logger.log("warn", "session", `Primary model failed (${failCount}/5)`, { model: modelKey, error: (err as Error).message });
         }
       }
     }
@@ -962,13 +965,13 @@ export class MissionController {
           agent,
           model: fallbackModelObj,
         };
-        console.error(`[opencode-orchestrator] createSession for ${agent} with FALLBACK model ${fallbackModelObj.providerID}/${fallbackModelObj.modelID}`);
+        Logger.log("warn", "session", `createSession fallback for ${agent}`, { model: `${fallbackModelObj.providerID}/${fallbackModelObj.modelID}`, fallback: true });
         session = await this.deps.client.v2.session.create(opts);
         // Clear failure count since fallback succeeded
         if (modelKey) this.modelFailures.set(modelKey, 0);
       } catch (err) {
         lastError = err as Error;
-        console.error(`[opencode-orchestrator] createSession fallback model also failed: ${(err as Error).message}`);
+        Logger.log("error", "session", `Fallback model also failed`, { model: `${fallbackModelObj.providerID}/${fallbackModelObj.modelID}`, error: (err as Error).message });
       }
     }
 
@@ -1014,7 +1017,7 @@ export class MissionController {
     };
     if (modelObj) {
       promptOpts.model = modelObj;
-      console.error(`[opencode-orchestrator] promptSession for ${agent} with model ${modelObj.providerID}/${modelObj.modelID}`);
+      Logger.log("debug", "session", `promptSession for ${agent}`, { model: `${modelObj.providerID}/${modelObj.modelID}` });
     }
     await this.deps.client.v2.session.prompt(promptOpts);
 
@@ -1059,7 +1062,7 @@ export class MissionController {
       const state = this.deps.sessions.get(sessionId);
       if (!state || !state.active) return;
     }
-    console.error(`[opencode-orchestrator] Session ${sessionId} poll timeout.`);
+    Logger.log("warn", "session", `Session ${sessionId} poll timeout`);
   }
 
   private async pollForFile(filePath: string): Promise<void> {
@@ -1133,14 +1136,13 @@ export class MissionController {
     try {
       writeFileAtomicSync(path, data);
     } catch (err) {
-      console.error(`[opencode-orchestrator] Failed to save mission state:`, err);
+      Logger.log("error", "mission-controller", "Failed to save mission state", { error: String(err) });
     }
   }
 
   private emit(ctx: MissionCtx, message: string, auto: boolean) {
-    const prefix = auto ? "[AUTO]" : "[MANUAL]";
-    const fullMsg = `[opencode-orchestrator] ${prefix}[${ctx.slug}] ${message}`;
-    console.error(fullMsg);
+    const mode = auto ? "auto" : "manual";
+    Logger.log("info", "mission-controller", message, { mission: ctx.slug, mode, state: ctx.state });
 
     // Toast notification (best-effort, never blocks mission)
     try {
