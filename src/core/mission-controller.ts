@@ -11,6 +11,7 @@ import type { EventHandlerDeps } from "./types.js";
 import { loadOrchestratorConfig, resolveAgentAlias } from "../utils/constants.js";
 import { ensureProjectDirs, getMissionDirectory, slugify } from "../utils/paths.js";
 import { parseTodos, updateTodoStatus, exportTodosJson, type ParsedTodo } from "../utils/todo-parser.js";
+import { createBackup, revertBackup, deleteBackup } from "../utils/backup.js";
 import { readFileSync, existsSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -33,6 +34,7 @@ interface MissionCtx {
   todos: ParsedTodo[];
   retryCounts: Map<string, number>;
   completedAt?: number;
+  backup?: { type: "git_stash" | "git_commit" | "directory" | "none"; path?: string; commitHash?: string };
 }
 
 type MissionState =
@@ -369,6 +371,36 @@ export class MissionController {
     }
   }
 
+  /** Revert mission changes using the stored backup */
+  revertMission(slug: string): boolean {
+    for (const [, ctx] of Array.from(this.missions.entries())) {
+      if (ctx.slug === slug) {
+        if (!ctx.backup || ctx.backup.type === "none") {
+          console.error(`[opencode-orchestrator] Mission ${slug} has no backup. Nothing to revert.`);
+          return false;
+        }
+        ctx.state = "failed";
+        this.saveMissionState(ctx);
+        // Mark sessions inactive
+        for (const [sid, sess] of Array.from(this.deps.sessions.entries())) {
+          if (sess.missionSlug === slug) {
+            this.deps.sessions.set(sid, { ...sess, active: false });
+          }
+        }
+        const ok = revertBackup(this.deps.directory, ctx.backup);
+        if (ok) {
+          this.emit(ctx, `↩️ Mission ${slug} reverted to pre-mission state`, true);
+          deleteBackup(ctx.backup);
+        } else {
+          this.emit(ctx, `❌ Mission ${slug} revert FAILED — manual intervention required`, true);
+        }
+        return ok;
+      }
+    }
+    console.error(`[opencode-orchestrator] Mission ${slug} not found for revert.`);
+    return false;
+  }
+
   /** Get current mission status summary */
   status(): string {
     const lines: string[] = [];
@@ -402,6 +434,13 @@ export class MissionController {
   /* ─── Private helpers ─── */
 
   private async executeTodos(ctx: MissionCtx, cfg: ReturnType<typeof loadOrchestratorConfig>, names: ReturnType<typeof loadOrchestratorConfig>["names"], auto: boolean) {
+    // Create backup before executing any tasks
+    if (!ctx.backup) {
+      const backup = createBackup(this.deps.directory, ctx.slug);
+      ctx.backup = backup;
+      this.emit(ctx, `💾 Backup created (${backup.type})`, auto);
+    }
+
     let index = 0;
     let currentPhase = "";
     while (index < ctx.todos.length) {

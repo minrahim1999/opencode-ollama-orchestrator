@@ -4,6 +4,17 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.14] - 2026-06-17
+
+### Added
+- **Pre-mission backup + revert** — `executeTodos()` auto-creates a backup before running any tasks. Three strategies:
+  1. **Git stash** (if git repo + uncommitted changes) — named `opencode-backup:{slug}:{timestamp}`
+  2. **Git commit** (if clean working tree) — empty commit as marker
+  3. **Directory snapshot** (no git) — copies project files to `.opencode-backups/{slug}-{timestamp}/`
+  Keeps last 10 directory backups, auto-cleans older ones.
+- **revert_mission tool** — Restores project to pre-mission state using stored backup. Aborts the mission and cleans up backup file. Supports all three backup types (git stash pop, git soft reset, directory copy-back).
+- **Mission backup tracking** — Each `MissionCtx` stores `backup` object with type, path, and commit hash. Exposed in status.
+
 ## [2.1.13] - 2026-06-17
 
 ### Added

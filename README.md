@@ -527,6 +527,21 @@ The plugin uses atomic writes (write to `.tmp` then rename). If you see corrupti
 
 **Fix:** Upgrade to **v2.1.13+**. The watchdog auto-detects sessions idle for >15 minutes and marks them inactive. You can also manually run **check_watchdog** to force a check.
 
+### Mission wrote bad code / need to undo changes
+
+**Symptom:** A mission completed but the code it wrote is broken. You want to undo all changes made during the mission.
+
+**Fix:** Upgrade to **v2.1.14+**. Every mission auto-creates a backup before executing tasks:
+- **Git repos:** Uncommitted changes are stashed as `opencode-backup:{slug}:{timestamp}`. Clean working trees get an empty commit marker.
+- **Non-git projects:** Files are copied to `.opencode-backups/{slug}-{timestamp}/`.
+
+Call the **revert_mission** tool with the mission slug to restore the pre-mission state. The tool:
+1. Aborts the mission
+2. Restores files (git stash pop, git reset, or directory copy-back)
+3. Deletes the backup to free space
+
+**Note:** If you want to manually revert using OpenCode's built-in tools, use `git stash list` to find the `opencode-backup:*` stash and `git stash pop` it. The orchestrator's stash includes `--include-untracked` so new files are also captured.
+
 ---
 
 ## Built-in Agent Isolation
@@ -547,6 +562,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **2.1.14** | 2026-06-17 | Pre-mission backup + revert_mission tool |
 | **2.1.13** | 2026-06-17 | Model fallback, session tracking, abort/skip/resume/watchdog tools |
 | **2.1.12** | 2026-06-17 | Question tool instruction in all agent prompts (interactive modals) |
 | **2.1.11** | 2026-06-17 | Auto-pipeline model routing + todo file path discovery fixes |

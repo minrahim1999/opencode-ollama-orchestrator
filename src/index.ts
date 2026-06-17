@@ -65,6 +65,18 @@ const plugin: Plugin = async (input) => {
           return "Watchdog check complete. Check logs for any stuck sessions.";
         },
       }),
+      revert_mission: tool({
+        description: "Revert a mission to its pre-mission state using the stored backup. Aborts the mission and restores files.",
+        args: {
+          missionSlug: tool.schema.string().describe("Mission slug to revert (e.g. build-login-page)"),
+        },
+        execute: async (args: { missionSlug: string }) => {
+          const ok = controller.revertMission(args.missionSlug);
+          return ok
+            ? `Mission ${args.missionSlug} reverted to pre-mission state.`
+            : `Failed to revert mission ${args.missionSlug}. Check logs for details.`;
+        },
+      }),
     },
     "chat.params": async (_inp, output) => {
       const model = output.options?.model as string | undefined;
