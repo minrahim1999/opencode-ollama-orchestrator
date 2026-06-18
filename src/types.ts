@@ -110,6 +110,7 @@ export interface AgentNameConfig {
 	engineer?: string;
 	auditor?: string;
 	specialist?: string;
+	spark?: string;
 }
 
 /** Plugin-level configuration (nested inside plugin array) */

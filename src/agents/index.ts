@@ -9,10 +9,13 @@ export {
 export { SPECIALIST_PROMPT } from "./specialist.js";
 export { STRATEGIST_PROMPT } from "./strategist.js";
 
+export { SPARK_PROMPT } from "./spark.js";
+
 import { ARCHITECT_PROMPT } from "./architect.js";
 import { AUDITOR_PROMPT } from "./auditor.js";
 import { ENGINEER_PROMPT } from "./engineer.js";
 import { SPECIALIST_PROMPT } from "./specialist.js";
+import { SPARK_PROMPT } from "./spark.js";
 import { STRATEGIST_PROMPT } from "./strategist.js";
 
 export type AgentPrompts = {
@@ -21,6 +24,7 @@ export type AgentPrompts = {
 	ENGINEER_PROMPT: typeof ENGINEER_PROMPT;
 	AUDITOR_PROMPT: typeof AUDITOR_PROMPT;
 	SPECIALIST_PROMPT: typeof SPECIALIST_PROMPT;
+	SPARK_PROMPT: typeof SPARK_PROMPT;
 };
 
 export const AGENTS: AgentPrompts = {
@@ -29,4 +33,5 @@ export const AGENTS: AgentPrompts = {
 	ENGINEER_PROMPT,
 	AUDITOR_PROMPT,
 	SPECIALIST_PROMPT,
+	SPARK_PROMPT,
 };

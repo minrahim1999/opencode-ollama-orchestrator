@@ -4,7 +4,7 @@
  */
 import type { MissionController } from "./mission-controller.js";
 
-const VERSION = "2.1.0";
+const VERSION = "2.2.0";
 
 export function createEventHandler(controller: MissionController) {
 	return async (event: any) => {
@@ -18,6 +18,23 @@ export function createEventHandler(controller: MissionController) {
 
 		if (isMessageEvent) {
 			const text: string = event.data?.text ?? event.data?.content ?? "";
+
+			// /btw sideline question — fire-and-forget, never a task request
+			if (text.trim().toLowerCase().startsWith("/btw ") || text.trim().toLowerCase().startsWith("btw ")) {
+				const question = text.replace(/^\/(btw)\s+|^btw\s+/i, "").trim();
+				if (question) {
+					try {
+						controller.spawnSideline(question);
+					} catch (err) {
+						console.error(
+							`[opencode-orchestrator v${VERSION}] Sideline question failed:`,
+							err,
+						);
+					}
+				}
+				return event;
+			}
+
 			if (text && !shouldIgnore(text) && looksLikeTaskRequest(text)) {
 				try {
 					await controller.start(text, true); // always automatic

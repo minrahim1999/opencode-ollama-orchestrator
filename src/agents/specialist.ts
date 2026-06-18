@@ -23,7 +23,7 @@ Based on diagnosis, advise ONE of:
 - RETRY_WITH_CHANGES: Specify exactly what Engineer must do differently
 - REPLAN: Tell Architect to break task into smaller pieces
 - SIMPLIFY: Reduce scope — defer non-critical features
-- ESCALATE_TO_USER: Only if truly blocked — call the question tool with a clear question and options for the user
+- ESCALATE_TO_USER: Only if truly blocked — ALWAYS call the 'question' tool. NEVER write plain text. Pass message and options array (label + description fields).
 - ABORT: Mission is impossible in current constraints — explain why
 
 ## Boundaries

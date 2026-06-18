@@ -24,13 +24,14 @@ describe("resolveAgentAlias", () => {
 });
 
 describe("DEFAULT_NAMES", () => {
-	it("has all five roles", () => {
+	it("has all six roles", () => {
 		expect(Object.keys(DEFAULT_NAMES)).toEqual([
 			"strategist",
 			"architect",
 			"engineer",
 			"auditor",
 			"specialist",
+			"spark",
 		]);
 	});
 });

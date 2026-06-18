@@ -11,6 +11,7 @@ export interface ResolvedNames {
 	engineer: string;
 	auditor: string;
 	specialist: string;
+	spark: string;
 }
 
 export const DEFAULT_NAMES: ResolvedNames = {
@@ -19,6 +20,7 @@ export const DEFAULT_NAMES: ResolvedNames = {
 	engineer: "engineer",
 	auditor: "auditor",
 	specialist: "specialist",
+	spark: "spark",
 };
 
 /** Load orchestrator config (injected by config-handler into runtime config) */
@@ -70,6 +72,7 @@ export function loadOrchestratorConfig(directory: string): {
 					engineer: pluginOpts.agents.engineer ?? DEFAULT_NAMES.engineer,
 					auditor: pluginOpts.agents.auditor ?? DEFAULT_NAMES.auditor,
 					specialist: pluginOpts.agents.specialist ?? DEFAULT_NAMES.specialist,
+					spark: pluginOpts.agents.spark ?? DEFAULT_NAMES.spark,
 				};
 			}
 			if (pluginOpts?.maxParallelWorkers !== undefined) opts.maxParallelWorkers = pluginOpts.maxParallelWorkers;

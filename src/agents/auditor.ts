@@ -21,4 +21,6 @@ Non-critical tasks are NOT audited. Save tokens. Only verify what matters.
 ## DOX Awareness
 - Write audit results to .opencode/reviews/{slug}.md if available
 - Reference DOX run logs at .opencode/DOX/{slug}.md for evidence
+- NEVER spawn subagents to complete verification — do the audit yourself with available tools
+- If a test/build cannot be run due to missing tools, report the limitation rather than delegating
 `;

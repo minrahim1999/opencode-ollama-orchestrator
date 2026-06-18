@@ -15,6 +15,7 @@ function resolveAgentNames(custom?: AgentNameConfig) {
 		engineer: custom?.engineer ?? DEFAULT_AGENT_NAMES.ENGINEER,
 		auditor: custom?.auditor ?? DEFAULT_AGENT_NAMES.AUDITOR,
 		specialist: custom?.specialist ?? DEFAULT_AGENT_NAMES.SPECIALIST,
+		spark: custom?.spark ?? DEFAULT_AGENT_NAMES.SPARK,
 	};
 }
 
@@ -58,6 +59,15 @@ function defaultTools(role: string): AgentConfig["tools"] {
 		bash: true,
 	};
 
+	const sparkTools: AgentConfig["tools"] = {
+		read: true,
+		glob: true,
+		grep: true,
+		list: true,
+		webfetch: true,
+		websearch: true,
+	};
+
 	switch (role) {
 		case "strategist":
 			return readOnly;
@@ -69,6 +79,8 @@ function defaultTools(role: string): AgentConfig["tools"] {
 			return auditOnly;
 		case "specialist":
 			return readOnly;
+		case "spark":
+			return sparkTools;
 		default:
 			return readOnly;
 	}
@@ -149,6 +161,23 @@ function defaultPermission(role: string): AgentConfig["permission"] {
 		skill: { "*": "allow" },
 	};
 
+	const sparkPerm: AgentConfig["permission"] = {
+		read: "allow",
+		glob: "allow",
+		grep: "allow",
+		list: "allow",
+		webfetch: "allow",
+		websearch: "allow",
+		skills: { "*": "allow" },
+		edit: "deny",
+		bash: "deny",
+		write: "deny",
+		question: "deny",
+		task: "deny",
+		external_directory: "deny",
+		doom_loop: "deny",
+	};
+
 	switch (role) {
 		case "strategist":
 			return readOnly;
@@ -160,6 +189,8 @@ function defaultPermission(role: string): AgentConfig["permission"] {
 			return auditPerm;
 		case "specialist":
 			return readOnly;
+		case "spark":
+			return sparkPerm;
 		default:
 			return readOnly;
 	}
@@ -188,17 +219,21 @@ function buildAgentConfig(
 		description: `${name} agent — Multi-Agent Orchestrator ${role}`,
 		mode,
 		prompt,
-		maxTokens: 8192,
-		temperature: role === "strategist" ? 0.3 : role === "architect" ? 0.8 : 0.2,
+		maxTokens: role === "spark" ? 2048 : 8192,
+		temperature:
+			role === "strategist" ? 0.3 : role === "architect" ? 0.8 : role === "spark" ? 0.3 : 0.2,
 		tools: defaultTools(role),
 		permission: defaultPermission(role),
 		allowLoop: false,
 		loopCount: 0,
 	};
 
-	// 2. Plugin-level small_model fallback
+	// 2. Plugin-level small_model fallback — spark always uses small model
 	if (pluginOpts?.smallModel) {
 		defaults.smallModel = pluginOpts.smallModel;
+	}
+	if (role === "spark" && pluginOpts?.smallModel) {
+		defaults.model = pluginOpts.smallModel;
 	}
 	if (pluginOpts?.defaultAllowLoop !== undefined) {
 		defaults.allowLoop = pluginOpts.defaultAllowLoop;
@@ -339,13 +374,14 @@ export function createConfigHandler(deps: ConfigHandlerDeps) {
 			);
 		}
 
-		// Register all 5 agents
+		// Register all 6 agents
 		const agentEntries: Array<[string, string, "primary" | "subagent"]> = [
 			[names.strategist, "strategist", "primary"],
 			[names.architect, "architect", "subagent"],
 			[names.engineer, "engineer", "subagent"],
 			[names.auditor, "auditor", "subagent"],
 			[names.specialist, "specialist", "subagent"],
+			[names.spark, "spark", "subagent"],
 		];
 
 		for (const [name, role, mode] of agentEntries) {

@@ -8,6 +8,7 @@ export const DEFAULT_AGENT_NAMES = {
 	ENGINEER: "engineer",
 	AUDITOR: "auditor",
 	SPECIALIST: "specialist",
+	SPARK: "spark",
 } as const;
 
 export type AgentRole =
@@ -15,7 +16,8 @@ export type AgentRole =
 	| "architect"
 	| "engineer"
 	| "auditor"
-	| "specialist";
+	| "specialist"
+	| "spark";
 
 export type AgentName =
 	(typeof DEFAULT_AGENT_NAMES)[keyof typeof DEFAULT_AGENT_NAMES];

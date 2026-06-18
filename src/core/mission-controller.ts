@@ -490,6 +490,47 @@ export class MissionController {
 	}
 
 	/**
+	 * Spawn a Spark sideline session — read-only Q\u0026A, fire-and-forget.
+	 * Does NOT create a mission. Does NOT touch the running mission state.
+	 */
+	spawnSideline(question: string): void {
+		const cfg = loadOrchestratorConfig(this.deps.directory);
+		const agent = cfg.names.spark ?? "spark";
+		const sessionTitle = `Spark: ${question.slice(0, 40)}`;
+
+		// Fire-and-forget: do NOT await
+		void (async () => {
+			try {
+				const session = await this.createSession(agent, sessionTitle);
+				await this.promptSession(session.id, agent, question);
+				Logger.log("info", "spark", `Sideline session spawned: ${sessionTitle}`, {
+					question,
+				});
+				// Best-effort toast
+				try {
+					const client = this.deps.client;
+					if (client?.tui?.showToast) {
+						await client.tui.showToast({
+							body: {
+								title: "Spark",
+								message: `Answer ready: "${question.slice(0, 60)}..."`,
+								variant: "info",
+								duration: 5000,
+							},
+						});
+					}
+				} catch {
+					// Toast is cosmetic
+				}
+			} catch (err) {
+				Logger.log("error", "spark", `Sideline session failed: ${String(err)}`, {
+					question,
+				});
+			}
+		})();
+	}
+
+	/**
 	 * Resume a paused mission (called by /auto command).
 	 */
 	async resume(): Promise<void> {

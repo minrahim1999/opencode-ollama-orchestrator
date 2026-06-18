@@ -71,9 +71,10 @@ You never run `/task`, `/auto`, or anything. Just type naturally.
 | **Critical-path auditing** | Auditor verifies only mission-critical tasks. ~60% of tasks skip audit for speed. |
 | **Anti-stuck system** | Loop detection, timeout watchdog, and Specialist auto-recovery. |
 | **Phase gates** | Optional user-controlled pauses between multi-phase plans for review. |
-|| **State persistence** | Mission state survives conversation compaction via filesystem storage. |
-|| **DOX integration** | Auto-generates timestamped run records and maintains `AGENTS.md`. |
-|| **Built-in isolation** | Auto-detects name collisions with OpenCode's built-in agents and renames safely. |
+| **Sideline Q\u0026A (`/btw`)** | Ask spark a question mid-mission without interrupting — fire-and-forget read-only session. |
+| **State persistence** | Mission state survives conversation compaction via filesystem storage. |
+| **DOX integration** | Auto-generates timestamped run records and maintains `AGENTS.md`. |
+| **Built-in isolation** | Auto-detects name collisions with OpenCode's built-in agents and renames safely. |
 
 ### Operating Modes
 
@@ -337,6 +338,27 @@ When the Architect writes a multi-phase plan, you may want to review each phase 
 5. **"yes"** → resume to next phase. **"no"** → mission stays in hold, you can request changes
 6. If you request changes during hold, Specialist replans the remaining phases
 
+### Sideline Q\u0026A (`/btw`)
+
+Ask a quick question without interrupting a running mission:
+
+```
+/btw what is OAuth2 PKCE?
+```
+
+The orchestrator spawns a **Spark** subagent — a read-only Q\u0026A agent — in a separate session:
+- No file writes, no edits, no subagent spawning
+- Non-blocking: engineers continue working while Spark answers
+- Uses your configured `smallModel` (or primary model if none)
+- Toast notification when the session starts
+
+```
+/btw how does the auth middleware validate tokens?
+/btw compare React Server Components vs SSR
+```
+
+**Spark permissions:** read, glob, grep, list, webfetch, websearch — and nothing else.
+
 ### Anti-Stuck System
 
 The orchestrator watches every task in real time:
@@ -529,7 +551,7 @@ The plugin uses atomic writes (write to `.tmp` then rename). If you see corrupti
 
 **Root cause:** The agent prompts told agents to "ask questions" in plain text, but never told them to call the `question` tool. The `question` tool was enabled (`question: true` in tools, `question: "allow"` in permissions), but agents didn't know they should use it.
 
-**Fix:** Upgrade to **v2.1.12+**. All agent prompts now explicitly instruct: "Call the question tool to present your question with pre-defined options. Do NOT just write text." This triggers OpenCode's interactive modal instead of plain text output.
+**Fix:** Upgrade to **v2.2.0+**. All agent prompts now use stronger language: "ALWAYS call the 'question' tool. NEVER write plain text." Additionally, each prompt describes the exact tool signature (message string + options array with label/description fields). This enforces the interactive modal instead of plain text output.
 
 ### Mission hangs / model unavailable
 
@@ -663,6 +685,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **2.2.0** | 2026-06-18 | Spark sideline Q&A (`/btw`), anti-recursion guards on all agents |
 | **2.1.17** | 2026-06-17 | Rate limiting, real session kill, notifications, structured logging |
 | **2.1.16** | 2026-06-17 | Mission resume, memory purge, graceful shutdown, circuit breaker |
 | **2.1.15** | 2026-06-17 | Parallel execution, task failure isolation, mission memory, atomic writes, auto-cleanup |

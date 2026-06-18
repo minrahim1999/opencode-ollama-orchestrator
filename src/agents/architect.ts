@@ -45,8 +45,8 @@ If critical tasks fail, what can be safely undone?
 
 ## Phase Gate Rules
 - Use phase-gate: yes on the LAST task of each phase OR on a dedicated gate task that verifies phase readiness
-- If phase-gate: yes is present, the Strategist WILL pause after that task and call the question tool with:
-  "Phase X ({name}) is complete. Continue to Phase Y ({name})?" + options ["Continue", "Hold", "Modify plan"]
+- If phase-gate: yes is present, the Strategist WILL pause after that task and call the 'question' tool with the phase completion message and options Continue/Hold/Modify plan.
+- CRITICAL reminder to Strategist: NEVER write gate questions as plain text. ALWAYS call the 'question' tool with message and options array.
 - The user controls progression via the question tool modal. No phase proceeds without user selecting "Continue".
 - If user selects "Hold", the mission enters a hold state — no new tasks dispatched.
 - If the plan has only ONE phase, or no phase-gate: yes tasks, the mission runs fully automatically.

@@ -4,6 +4,34 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-06-18
+
+### Added
+- **Spark sideline agent** (`/btw`) — fire-and-forget Q\u0026A sessions that run in parallel with active missions.
+  - Usage: `/btw how does OAuth2 PKCE work?`
+  - Read-only permissions — cannot write, edit, or spawn subagents.
+  - Non-blocking: spawns a separate session via `client.v2.session.create()`, does not await completion.
+  - Toast notification on spawn so user knows answer is coming.
+  - Default maxTokens 2048, temperature 0.3. Can override with `smallModel` plugin option.
+- **Anti-recursion guards** in all agent prompts:
+  - Engineer: added "NEVER spawn subagents via task tool — you are the worker, do the task yourself"
+  - Architect: added "NEVER spawn subagents or call task tool — your job ends after writing the plan"
+  - Auditor: added "NEVER spawn subagents to complete verification — do the audit yourself"
+  - Specialist: added "NEVER spawn additional subagents — call the question tool or write your recommendation"
+  - Strategist: added "NEVER attempt to do work yourself — always delegate" and "Sideline questions → delegate to Spark subagent"
+- **Spark agent registration** — `config-handler` registers `spark` as a `subagent` with read-only tools/permissions.
+
+### Changed
+- **Strengthened question-tool compliance** across all agent prompts to ensure modal picker (not plain text):
+  - Strategist: Mode 1/2/phase-gate instructions now say "ALWAYS call the 'question' tool. NEVER write plain text."
+  - Architect: phase-gate rules now remind Strategist to call question tool, not write plain text.
+  - Engineer: blocked-task and oversized-task rules now say "ALWAYS call the 'question' tool. NEVER write plain text."
+  - Specialist: ESCALATE_TO_USER now says "ALWAYS call the 'question' tool. NEVER write plain text."
+- `ResolvedNames` and `DEFAULT_NAMES` expanded to include `spark`.
+- `AgentNameConfig` expanded to support `spark` custom name override.
+- `buildAgentConfig` assigns `maxTokens: 2048` and `temperature: 0.3` for spark role.
+- Event handler (`createEventHandler`) intercepts `/btw ` and `btw ` prefix before task-request detection.
+
 ## [2.1.18] - 2026-06-17
 
 ### Added
