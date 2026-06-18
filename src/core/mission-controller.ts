@@ -10,12 +10,8 @@
 
 import {
 	existsSync,
-	readdirSync,
 	readFileSync,
-	rmSync,
-	statSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { writeFileAtomicSync } from "../utils/atomic.js";
 import { createBackup, deleteBackup, revertBackup } from "../utils/backup.js";
@@ -37,13 +33,14 @@ import {
 	getMissionDirectory,
 	slugify,
 } from "../utils/paths.js";
-import { createOllamaRateLimiter, TokenBucket } from "../utils/ratelimiter.js";
 import {
 	exportTodosJson,
 	type ParsedTodo,
 	parseTodos,
 	updateTodoStatus,
 } from "../utils/todo-parser.js";
+import { MissionStore } from "./mission-store.js";
+import { SessionManager } from "./session-manager.js";
 import type { EventHandlerDeps } from "./types.js";
 
 interface MissionCtx {
@@ -83,36 +80,6 @@ type MissionState =
 	| "retrying"
 	| "hold";
 
-const POLL_INTERVAL_MS = 2000;
-const MAX_POLL_ATTEMPTS = 300; // 10 minutes
-
-/** Load raw opencode.json to find agent model assignments */
-function loadUserConfig(): Record<string, any> | null {
-	const candidates = [
-		join(homedir(), ".config", "opencode", "opencode.json"),
-		join(homedir(), ".opencode", "opencode.json"),
-	];
-	for (const p of candidates) {
-		try {
-			const raw = readFileSync(p, "utf-8");
-			return JSON.parse(raw);
-		} catch {}
-	}
-	return null;
-}
-
-/** Parse "ollama/kimi-k2.7-code" -> { providerID: "ollama", modelID: "kimi-k2.7-code" } */
-function parseModel(
-	modelStr: string,
-): { providerID: string; modelID: string } | null {
-	if (!modelStr || typeof modelStr !== "string") return null;
-	const parts = modelStr.split("/");
-	if (parts.length >= 2) {
-		return { providerID: parts[0], modelID: parts.slice(1).join("/") };
-	}
-	return null;
-}
-
 function parseMissionTimestamp(missionId: string): number {
 	if (!missionId) return Date.now();
 	const parts = missionId.split("-");
@@ -125,11 +92,9 @@ export class MissionController {
 	private deps: EventHandlerDeps;
 	private missions = new Map<string, MissionCtx>();
 	private active = false;
-	private cleanupInterval: ReturnType<typeof setInterval> | null = null;
 	private runningTasks = new Map<string, Promise<void>>();
-	private modelFailures = new Map<string, number>();
-	private brokenModels = new Set<string>();
-	private rateLimiter: TokenBucket;
+	private sessionManager: SessionManager;
+	private missionStore: MissionStore;
 	private notifyConfig: NotifyConfig;
 
 	constructor(
@@ -143,149 +108,32 @@ export class MissionController {
 		this.deps = deps;
 		this.notifyConfig = opts?.notify ?? {};
 		const cfg = loadOrchestratorConfig(deps.directory);
-		this.rateLimiter = createOllamaRateLimiter(cfg.maxParallelWorkers);
-		if (opts?.rateLimitCapacity && opts?.rateLimitRefill) {
-			this.rateLimiter = new TokenBucket({
-				capacity: opts.rateLimitCapacity,
-				refillRate: opts.rateLimitRefill,
-			});
-		}
+		this.sessionManager = new SessionManager(
+			{
+				client: deps.client,
+				directory: deps.directory,
+				sessions: deps.sessions,
+			},
+			{
+				rateLimitCapacity: opts?.rateLimitCapacity,
+				rateLimitRefill: opts?.rateLimitRefill,
+				maxParallelWorkers: cfg.maxParallelWorkers,
+			},
+		);
 		Logger.init(deps.directory, "info");
-		this.loadMissionsFromDisk();
-		this.startCleanup();
-		this.startMemoryPurge();
+		this.missionStore = new MissionStore({
+			directory: deps.directory,
+			missions: this.missions,
+		});
+		this.missionStore.loadMissionsFromDisk();
+		this.missionStore.startCleanup();
+		this.missionStore.startMemoryPurge();
 		this.setupShutdownHandlers();
 	}
 
-	/** Start periodic cleanup of old mission directories */
-	private startCleanup(): void {
-		const DAYS = 7; // Keep missions for 7 days
-		const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
-		const runCleanup = () => {
-			try {
-				const missionsDir = join(this.deps.directory, ".opencode", "missions");
-				if (!existsSync(missionsDir)) return;
-
-				const now = Date.now();
-				const entries = readdirSync(missionsDir, { withFileTypes: true });
-				let cleaned = 0;
-
-				for (const entry of entries) {
-					if (!entry.isDirectory()) continue;
-					const dirPath = join(missionsDir, entry.name);
-					try {
-						const stat = statSync(dirPath);
-						const ageDays = (now - stat.mtimeMs) / MS_PER_DAY;
-						if (ageDays > DAYS) {
-							rmSync(dirPath, { recursive: true, force: true });
-							cleaned++;
-						}
-					} catch {
-						// Ignore cleanup errors for individual directories
-					}
-				}
-
-				if (cleaned > 0) {
-					Logger.log(
-						"info",
-						"mission-controller",
-						`Cleaned up ${cleaned} mission directories older than ${DAYS} days`,
-					);
-				}
-			} catch {
-				// Ignore cleanup errors
-			}
-		};
-
-		// Run once at startup, then daily
-		runCleanup();
-		this.cleanupInterval = setInterval(runCleanup, MS_PER_DAY);
-	}
-
-	/** Stop periodic cleanup */
+	/** Stop periodic cleanup (delegates to MissionStore) */
 	stopCleanup(): void {
-		if (this.cleanupInterval) {
-			clearInterval(this.cleanupInterval);
-			this.cleanupInterval = null;
-		}
-	}
-
-	/** Attempt to restore missions from disk */
-	private loadMissionsFromDisk(): void {
-		try {
-			const missionsDir = join(this.deps.directory, ".opencode", "missions");
-			if (!existsSync(missionsDir)) return;
-			const entries = readdirSync(missionsDir, { withFileTypes: true });
-			let restored = 0;
-			for (const entry of entries) {
-				if (!entry.isDirectory()) continue;
-				const statePath = join(missionsDir, entry.name, "state.json");
-				if (!existsSync(statePath)) continue;
-				try {
-					const raw = readFileSync(statePath, "utf-8");
-					const data = JSON.parse(raw);
-					if (
-						data.state === "executing" ||
-						data.state === "hold" ||
-						data.state === "retrying"
-					) {
-						const ctx: MissionCtx = {
-							missionId: data.missionId,
-							slug: data.slug,
-							description: data.description,
-							missionDir: join(missionsDir, entry.name),
-							state: "idle",
-							todos: data.todos || [],
-							retryCounts: new Map(),
-							completedAt: data.completedAt,
-							memory: data.memory || [],
-						};
-						this.missions.set(ctx.missionId, ctx);
-						restored++;
-					}
-				} catch {
-					// Skip corrupted state files
-				}
-			}
-			if (restored > 0) {
-				Logger.log(
-					"info",
-					"mission-controller",
-					`Restored ${restored} missions from disk`,
-				);
-			}
-		} catch {
-			// Ignore read errors
-		}
-	}
-
-	/** Periodically purge completed missions from memory */
-	private startMemoryPurge(): void {
-		const HOUR = 60 * 60 * 1000;
-		const purge = () => {
-			try {
-				const now = Date.now();
-				let purged = 0;
-				for (const [id, ctx] of Array.from(this.missions.entries())) {
-					if (ctx.completedAt && now - ctx.completedAt > HOUR) {
-						this.missions.delete(id);
-						purged++;
-					}
-				}
-				if (purged > 0) {
-					Logger.log(
-						"info",
-						"mission-controller",
-						`Purged ${purged} completed missions from memory`,
-					);
-				}
-			} catch {
-				// Ignore
-			}
-		};
-		purge();
-		setInterval(purge, HOUR);
+		this.missionStore.stopCleanup();
 	}
 
 	/** Graceful shutdown: wait for tasks, save states, exit */
@@ -319,8 +167,8 @@ export class MissionController {
 			for (const [, ctx] of Array.from(this.missions.entries())) {
 				if (!ctx.completedAt) this.saveMissionState(ctx);
 			}
-			process.exit(0);
 			Logger.stop();
+			process.exit(0);
 		};
 		process.once("SIGTERM", () => shutdown("SIGTERM"));
 		process.once("SIGINT", () => shutdown("SIGINT"));
@@ -404,8 +252,8 @@ export class MissionController {
 			[
 				`Create a detailed plan for: ${description}`,
 				"",
-				`Write the plan to ${missionDir}/plan.md`,
-				`Write the todos to ${this.deps.directory}/.opencode/todo/${slug}.md`,
+				`Write the plan to .opencode/plans/${slug}/plan.md`,
+				`Write the todos to .opencode/todo/${slug}.md`,
 				"",
 				"Plan format:",
 				"## Phase 1: \u003cName\u003e",
@@ -424,9 +272,20 @@ export class MissionController {
 		);
 
 		if (auto) {
-			await this.pollForFile(
-				`${this.deps.directory}/.opencode/todo/${slug}.md`,
-			);
+			try {
+				await this.pollForFile(
+					join(this.deps.directory, ".opencode", "todo", `${slug}.md`),
+				);
+			} catch (err) {
+				ctx.state = "failed";
+				this.emit(
+					ctx,
+					`❌ Planning timed out — the architect did not write .opencode/todo/${slug}.md within 5 minutes. Check that the architect agent has write permission to .opencode/todo/**. Error: ${String(err).slice(0, 150)}`,
+					auto,
+				);
+				this.saveMissionState(ctx);
+				return;
+			}
 		} else {
 			this.emit(ctx, `Plan created. Run /auto or /status to continue.`, auto);
 			return;
@@ -1067,14 +926,15 @@ export class MissionController {
 					);
 					ctx.todos[index] = { ...todo, status: "failed" };
 					this.addTaskMemory(
-						ctx,
-						todo.id,
-						resolvedAgent,
-						"Audit failed — acceptance criteria not met",
-						[],
-						[`Failed after ${maxRetries} retries`],
-					);
-					this.emit(ctx, `${todo.id} audit FAILED permanently`, auto);
+							ctx,
+							todo.id,
+							resolvedAgent,
+							"Audit failed — acceptance criteria not met",
+							[],
+							[`Failed after ${maxRetries} retries`],
+						);
+						this.saveMissionState(ctx); // Persist memory even on failure
+						this.emit(ctx, `${todo.id} audit FAILED permanently`, auto);
 					return;
 				}
 			}
@@ -1089,6 +949,7 @@ export class MissionController {
 			);
 			ctx.todos[index] = { ...todo, status: "completed" };
 			this.addTaskMemory(ctx, todo.id, resolvedAgent, todo.description, [], []);
+			this.saveMissionState(ctx); // Persist mission memory after every task
 			this.emit(ctx, `${todo.id} completed`, auto);
 		} catch (err) {
 			const retries = ctx.retryCounts.get(todo.id) ?? 0;
@@ -1119,6 +980,7 @@ export class MissionController {
 				[],
 				[String(err).slice(0, 200)],
 			);
+			this.saveMissionState(ctx); // Persist memory even on failure
 			this.emit(
 				ctx,
 				`${todo.id} failed permanently after ${maxRetries} retries`,
@@ -1170,7 +1032,12 @@ export class MissionController {
 		auditorName: string,
 		ctx: MissionCtx,
 	): Promise<boolean> {
-		const auditResultPath = join(ctx.missionDir, `audit-${todo.id}.json`);
+		const auditResultRelPath = join(
+			".opencode", "plans", ctx.slug, `audit-${todo.id}.json`,
+		);
+		const auditResultAbsPath = join(
+			this.deps.directory, ".opencode", "plans", ctx.slug, `audit-${todo.id}.json`,
+		);
 
 		const session = await this.createSession(
 			auditorName,
@@ -1191,18 +1058,17 @@ export class MissionController {
 				"Verify all criteria. Run tests. Check for regressions.",
 				"",
 				"After your analysis, write a JSON file with your verdict:",
-				`File: ${auditResultPath}`,
+				`File: ${auditResultRelPath}`,
 				'Format: { "passed": true|false, "issues": ["..."], "recommendation": "retry|pass|escalate" }',
 				"If passed=true, the task proceeds. If passed=false, the task fails and may be retried.",
 			].join("\n"),
 		);
 
 		await this.pollSession(session.id);
-
 		// Check if auditor wrote the result file
 		try {
-			if (existsSync(auditResultPath)) {
-				const raw = readFileSync(auditResultPath, "utf-8");
+			if (existsSync(auditResultAbsPath)) {
+				const raw = readFileSync(auditResultAbsPath, "utf-8");
 				const result = JSON.parse(raw);
 				if (result.passed === true) {
 					this.emit(ctx, `✅ AUDIT ${todo.id}: PASSED`, true);
@@ -1270,7 +1136,6 @@ export class MissionController {
 		slug: string,
 	): string {
 		const todoPath = join(
-			this.deps.directory,
 			".opencode",
 			"todo",
 			`${slug}.md`,
@@ -1297,150 +1162,7 @@ export class MissionController {
 		taskId?: string,
 		slug?: string,
 	): Promise<{ id: string }> {
-		// Rate limit: wait for capacity
-		const acquired = await this.rateLimiter.waitForTokens(1, 50, 60000);
-		if (!acquired) {
-			Logger.log(
-				"error",
-				"rate-limit",
-				`Rate limit exceeded creating session for ${agent}`,
-				{ agent, title },
-			);
-			throw new Error(
-				`Rate limit exceeded: could not acquire token for session creation`,
-			);
-		}
-		return this._createSessionInner(agent, title, taskId, slug);
-	}
-
-	private async _createSessionInner(
-		agent: string,
-		title: string,
-		taskId?: string,
-		slug?: string,
-	): Promise<{ id: string }> {
-		const userConfig = loadUserConfig();
-		const agentConfig = userConfig?.agent?.[agent];
-		let modelObj: { providerID: string; modelID: string } | null = null;
-		let fallbackModelObj: { providerID: string; modelID: string } | null = null;
-
-		// Resolve primary model
-		if (agentConfig?.model) {
-			modelObj = parseModel(agentConfig.model);
-		}
-		if (!modelObj && userConfig?.model) {
-			modelObj = parseModel(userConfig.model);
-		}
-		// Resolve fallback model
-		if (agentConfig?.fallbackModel) {
-			fallbackModelObj = parseModel(agentConfig.fallbackModel);
-		}
-		if (!fallbackModelObj && userConfig?.fallbackModel) {
-			fallbackModelObj = parseModel(userConfig.fallbackModel);
-		}
-		// If no explicit fallback but primary model exists, try global default as fallback
-		if (!fallbackModelObj && agentConfig?.model && userConfig?.model) {
-			const parsed = parseModel(userConfig.model);
-			if (parsed && parsed.modelID !== modelObj?.modelID) {
-				fallbackModelObj = parsed;
-			}
-		}
-
-		let session: { id: string } | null = null;
-		let lastError: Error | null = null;
-
-		const modelKey = modelObj
-			? `${modelObj.providerID}/${modelObj.modelID}`
-			: "";
-
-		// Check circuit breaker
-		const failures = this.modelFailures.get(modelKey) ?? 0;
-		if (failures >= 5) {
-			Logger.log(
-				"warn",
-				"circuit-breaker",
-				`Circuit breaker OPEN for ${modelKey}`,
-				{ failures, action: "skip_to_fallback" },
-			);
-			this.brokenModels.add(modelKey);
-		} else {
-			// Try primary model
-			if (modelObj) {
-				try {
-					const opts: any = {
-						directory: this.deps.directory,
-						title,
-						agent,
-						model: modelObj,
-					};
-					Logger.log("info", "session", `createSession for ${agent}`, {
-						model: `${modelObj.providerID}/${modelObj.modelID}`,
-						primary: true,
-					});
-					session = await this.deps.client.v2.session.create(opts);
-				} catch (err) {
-					lastError = err as Error;
-					const failCount = (this.modelFailures.get(modelKey) ?? 0) + 1;
-					this.modelFailures.set(modelKey, failCount);
-					Logger.log(
-						"warn",
-						"session",
-						`Primary model failed (${failCount}/5)`,
-						{ model: modelKey, error: (err as Error).message },
-					);
-				}
-			}
-		}
-
-		// Try fallback if primary failed
-		if (!session && fallbackModelObj) {
-			try {
-				const opts: any = {
-					directory: this.deps.directory,
-					title,
-					agent,
-					model: fallbackModelObj,
-				};
-				Logger.log("warn", "session", `createSession fallback for ${agent}`, {
-					model: `${fallbackModelObj.providerID}/${fallbackModelObj.modelID}`,
-					fallback: true,
-				});
-				session = await this.deps.client.v2.session.create(opts);
-				// Clear failure count since fallback succeeded
-				if (modelKey) this.modelFailures.set(modelKey, 0);
-			} catch (err) {
-				lastError = err as Error;
-				Logger.log("error", "session", `Fallback model also failed`, {
-					model: `${fallbackModelObj.providerID}/${fallbackModelObj.modelID}`,
-					error: (err as Error).message,
-				});
-			}
-		}
-
-		if (!session) {
-			throw new Error(
-				`[opencode-orchestrator] Failed to create session for ${agent}: ${lastError?.message ?? "unknown error"}. ` +
-					`Primary: ${modelObj ? `${modelObj.providerID}/${modelObj.modelID}` : "none"}. ` +
-					`Fallback: ${fallbackModelObj ? `${fallbackModelObj.providerID}/${fallbackModelObj.modelID}` : "none"}. ` +
-					`Check model availability and provider connectivity.`,
-			);
-		}
-
-		// Track session with full info
-		this.deps.sessions.set(session.id, {
-			active: true,
-			step: 1,
-			agent,
-			model: modelObj
-				? `${modelObj.providerID}/${modelObj.modelID}`
-				: "default",
-			createdAt: Date.now(),
-			promptsSent: 0,
-			lastPromptAt: Date.now(),
-			taskId,
-			missionSlug: slug,
-		});
-		return session;
+		return this.sessionManager.createSession(agent, title, taskId, slug);
 	}
 
 	private async promptSession(
@@ -1448,165 +1170,24 @@ export class MissionController {
 		agent: string,
 		text: string,
 	): Promise<void> {
-		const userConfig = loadUserConfig();
-		const agentConfig = userConfig?.agent?.[agent];
-		let modelObj: { providerID: string; modelID: string } | null = null;
-		if (agentConfig?.model) {
-			modelObj = parseModel(agentConfig.model);
-		}
-		if (!modelObj && userConfig?.model) {
-			modelObj = parseModel(userConfig.model);
-		}
-		const promptOpts: any = {
-			sessionID: sessionID,
-			directory: this.deps.directory,
-			agent,
-			parts: [{ type: "text", text }],
-		};
-		if (modelObj) {
-			promptOpts.model = modelObj;
-			Logger.log("debug", "session", `promptSession for ${agent}`, {
-				model: `${modelObj.providerID}/${modelObj.modelID}`,
-			});
-		}
-		await this.deps.client.v2.session.prompt(promptOpts);
-
-		// Update session tracking
-		const sess = this.deps.sessions.get(sessionID);
-		if (sess) {
-			sess.promptsSent++;
-			sess.lastPromptAt = Date.now();
-			this.deps.sessions.set(sessionID, sess);
-		}
+		return this.sessionManager.promptSession(sessionID, agent, text);
 	}
 
 	private async pollSession(sessionId: string): Promise<void> {
-		// Try SDK session.status API first (most reliable)
-		try {
-			const client = this.deps.client;
-			if (client?.v2?.session?.status) {
-				for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
-					await sleep(POLL_INTERVAL_MS);
-					const result = await client.v2.session.status({
-						query: { directory: this.deps.directory },
-					});
-					const statuses = result.data as
-						| Record<string, { status?: string }>
-						| undefined;
-					if (statuses?.[sessionId]) {
-						const st = statuses[sessionId].status ?? "";
-						if (st === "completed" || st === "failed" || st === "error") {
-							// Mark as inactive in our map too
-							const local = this.deps.sessions.get(sessionId);
-							if (local)
-								this.deps.sessions.set(sessionId, { ...local, active: false });
-							return;
-						}
-					}
-				}
-			}
-		} catch {
-			// SDK status API unavailable — fall through to local map polling
-		}
-
-		// Fallback: poll local session map (works if external code updates it)
-		for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
-			await sleep(POLL_INTERVAL_MS);
-			const state = this.deps.sessions.get(sessionId);
-			if (!state?.active) return;
-		}
-		Logger.log("warn", "session", `Session ${sessionId} poll timeout`);
+		return this.sessionManager.pollSession(sessionId);
 	}
 
 	private async pollForFile(filePath: string): Promise<void> {
-		for (let i = 0; i < 150; i++) {
-			if (existsSync(filePath)) return;
-			await sleep(POLL_INTERVAL_MS);
-		}
-		throw new Error(`Timeout waiting for file: ${filePath}`);
+		return this.sessionManager.pollForFile(filePath);
 	}
 
 	private loadMissionTodos(slug: string): ParsedTodo[] {
-		const path = join(this.deps.directory, ".opencode", "todo", `${slug}.md`);
-		if (!existsSync(path)) return [];
-		// Parse from mission-specific todo file
-		const content = readFileSync(path, "utf-8");
-		// Reuse parseTodos logic but from a specific path
-		// For simplicity, copy file to temp and call parseTodos, or inline
-		// Here we do a quick inline parse
-		const lines = content.split("\n");
-		const todos: ParsedTodo[] = [];
-		let current: Partial<ParsedTodo> | null = null;
-		let currentPhase = "";
-		for (const line of lines) {
-			const trimmed = line.trim();
-			const phaseMatch = trimmed.match(/^## Phase \d+:\s*(.+)/i);
-			if (phaseMatch) {
-				currentPhase = phaseMatch[1].trim();
-				continue;
-			}
-			const todoMatch = trimmed.match(
-				/^- \[( |x)\] (TASK-\d+): (.+?)\s*\(@(\w+)\s*(.*?)\)/i,
-			);
-			if (todoMatch) {
-				if (current) todos.push(current as ParsedTodo);
-				const metaStr = todoMatch[5];
-				current = {
-					status: todoMatch[1] === "x" ? "completed" : "pending",
-					id: todoMatch[2],
-					description: todoMatch[3].trim(),
-					agent: todoMatch[4],
-					criticalPath: /critical-path:\s*yes/i.test(metaStr),
-					phaseGate: /phase-gate:\s*yes/i.test(metaStr),
-					dependsOn: [],
-					acceptanceCriteria: [],
-					phase: currentPhase,
-				};
-				continue;
-			}
-			const acceptMatch = trimmed.match(/^-?\s*Acceptance:\s*(.+)/i);
-			if (acceptMatch && current) {
-				current.acceptanceCriteria = (current.acceptanceCriteria || []).concat(
-					acceptMatch[1].trim(),
-				);
-			}
-			const dependsMatch = trimmed.match(/^-?\s*Depends:\s*\[(.*?)\]/i);
-			if (dependsMatch && current) {
-				current.dependsOn = dependsMatch[1]
-					.split(/,\s*/)
-					.map((s) => s.trim())
-					.filter(Boolean);
-			}
-		}
-		if (current) todos.push(current as ParsedTodo);
-		return todos;
+		// Delegate to the shared parser which handles [ ], [x], and [~] markers
+		return parseTodos(this.deps.directory, slug);
 	}
 
 	private saveMissionState(ctx: MissionCtx) {
-		const path = join(ctx.missionDir, "state.json");
-		const data = JSON.stringify(
-			{
-				missionId: ctx.missionId,
-				slug: ctx.slug,
-				description: ctx.description,
-				state: ctx.state,
-				todos: ctx.todos,
-				completedAt: ctx.completedAt,
-				memory: ctx.memory,
-			},
-			null,
-			2,
-		);
-		try {
-			writeFileAtomicSync(path, data);
-		} catch (err) {
-			Logger.log(
-				"error",
-				"mission-controller",
-				"Failed to save mission state",
-				{ error: String(err) },
-			);
-		}
+		this.missionStore.saveMissionState(ctx);
 	}
 
 	private emit(ctx: MissionCtx, message: string, auto: boolean) {

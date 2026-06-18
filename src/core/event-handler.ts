@@ -4,7 +4,7 @@
  */
 import type { MissionController } from "./mission-controller.js";
 
-const VERSION = "2.2.0";
+const VERSION = "2.4.0";
 
 export function createEventHandler(controller: MissionController) {
 	return async (event: any) => {
@@ -144,12 +144,8 @@ export function looksLikeTaskRequest(text: string): boolean {
 	];
 	const hasStrongKeyword = strongKeywords.some((kw) => lower.includes(kw));
 
-	// If user says "help me understand X" — that's weak + no strong keyword → reject
-	// If user says "please help me build X" — that's weak + strong keyword → accept
-	return (
-		hasStrongKeyword ||
-		(!hasWeakSignal && strongKeywords.some((kw) => lower.includes(kw)))
-	);
+	// Strong positive keyword is required to trigger a mission
+	return hasStrongKeyword;
 }
 
 /** Exported for testing. */

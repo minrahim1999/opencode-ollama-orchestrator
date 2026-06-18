@@ -665,6 +665,14 @@ Call the **revert_mission** tool with the mission slug to restore the pre-missio
 
 **Fix:** Upgrade to **v2.1.17+**. Structured JSON logs written to `.opencode/logs/orchestrator-{date}.ndjson`. Severity levels: trace/debug/info/warn/error/fatal. 7-day rotation.
 
+### Plan/todo files never created (silent timeout)
+
+**Symptom:** Mission starts, the architect is commissioned, but nothing happens. After ~5 minutes the mission silently dies. No `.opencode/plans/{slug}/plan.md` or `.opencode/todo/{slug}.md` files appear.
+
+**Root cause:** The orchestrator sent **absolute paths** (e.g. `/Users/.../.opencode/plans/slug/plan.md`) to the architect in the prompt, but the architect's `write` permission uses **relative globs** (`.opencode/plans/**`). OpenCode's permission system silently denied the write — no error, no file, no feedback. The `pollForFile()` call then timed out after 150×2s = 5 minutes, and the timeout error was swallowed by the event handler.
+
+**Fix:** Upgrade to **v2.2.1+**. All agent prompts now use relative paths (`.opencode/plans/{slug}/plan.md`) that match the permission globs. The `pollForFile()` timeout is now caught and surfaced as a visible error toast with actionable guidance.
+
 ---
 
 ## Built-in Agent Isolation
@@ -685,6 +693,9 @@ See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **2.4.0** | 2026-06-18 | God class split: SessionManager + MissionStore extracted, 28 integration tests added |
+| **2.3.0** | 2026-06-18 | Major overhaul: 16 critical bug fixes, config caching, dedup, dead code cleanup |
+| **2.2.1** | 2026-06-18 | Fix: plan/todo files never created (absolute→relative path mismatch), silent timeout, memory persistence |
 | **2.2.0** | 2026-06-18 | Spark sideline Q&A (`/btw`), anti-recursion guards on all agents |
 | **2.1.17** | 2026-06-17 | Rate limiting, real session kill, notifications, structured logging |
 | **2.1.16** | 2026-06-17 | Mission resume, memory purge, graceful shutdown, circuit breaker |

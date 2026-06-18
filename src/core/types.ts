@@ -22,38 +22,19 @@ export interface SessionInfo {
 	missionSlug?: string;
 }
 
-/** Why a task/mission got stuck */
-export type StuckReason =
-	| "timeout"
-	| "loop"
-	| "circular_deps"
-	| "all_failed"
-	| "stalled"
-	| "resource_exhausted";
+/** Canonical mission state machine values (used by MissionController) */
+export type MissionState =
+	| "idle"
+	| "planning"
+	| "pending_dependencies"
+	| "executing"
+	| "auditing"
+	| "completed"
+	| "failed"
+	| "retrying"
+	| "hold";
 
-export interface DiagnosticReport {
-	reason: StuckReason;
-	taskId?: string;
-	attempts: number;
-	logs: string[];
-	recommendation: string;
-	suggestedStrategy: "retry" | "replan" | "simplify" | "escalate" | "abort";
-}
-
-export interface WatchdogConfig {
-	taskTimeoutMs: number;
-	missionTimeoutMs: number;
-	stallThresholdMs: number;
-	pollIntervalMs: number;
-}
-
-export const DEFAULT_WATCHDOG: WatchdogConfig = {
-	taskTimeoutMs: 5 * 60 * 1000,
-	missionTimeoutMs: 30 * 60 * 1000,
-	stallThresholdMs: 10 * 60 * 1000,
-	pollIntervalMs: 2000,
-};
-
+/** Mission context — the runtime state of a single mission */
 export interface MissionCtx {
 	missionId: string;
 	slug: string;
@@ -62,21 +43,21 @@ export interface MissionCtx {
 	state: MissionState;
 	todos: import("../utils/todo-parser.js").ParsedTodo[];
 	retryCounts: Map<string, number>;
-	loopCounts: Map<string, number>;
-	diagnostics: DiagnosticReport[];
-	startTime: number;
-	lastProgressAt: number;
 	completedAt?: number;
+	backup?: {
+		type: "git_stash" | "git_commit" | "directory" | "none";
+		path?: string;
+		commitHash?: string;
+	};
+	memory?: TaskMemoryEntry[];
 }
 
-export type MissionState =
-	| "idle"
-	| "commissioning_plan"
-	| "awaiting_plan"
-	| "dispatching"
-	| "executing"
-	| "verifying"
-	| "diagnosing"
-	| "completed"
-	| "failed"
-	| "aborted";
+/** Accumulated context from completed tasks */
+export interface TaskMemoryEntry {
+	taskId: string;
+	agent: string;
+	summary: string;
+	filesChanged: string[];
+	issues: string[];
+	timestamp: number;
+}

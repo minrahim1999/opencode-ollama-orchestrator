@@ -1,61 +1,12 @@
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { tool } from "@opencode-ai/plugin";
 import type { SessionInfo } from "../core/types.js";
-import type { ResolvedNames } from "../utils/constants.js";
-import { loadOrchestratorConfig } from "../utils/constants.js";
+import { loadOrchestratorConfig, resolveAgentAlias } from "../utils/constants.js";
+import { loadUserConfig, parseModel } from "../utils/config-loader.js";
 
 interface DelegateTaskDeps {
 	client: any;
 	directory: string;
 	sessions: Map<string, SessionInfo>;
-}
-
-/** Resolve generic agent names to configured names at runtime */
-function resolveAgentAlias(agent: string, names: ResolvedNames): string {
-	const aliases: Record<string, keyof ResolvedNames> = {
-		planner: "architect",
-		worker: "engineer",
-		reviewer: "auditor",
-		expert: "specialist",
-		commander: "strategist",
-	};
-
-	const role =
-		aliases[agent.toLowerCase()] ??
-		(Object.keys(names).includes(agent)
-			? (agent as keyof ResolvedNames)
-			: null);
-	if (!role) return agent; // Pass through as-is if unrecognized
-	return names[role];
-}
-
-/** Load raw opencode.json to find agent model assignments */
-function loadUserConfig(): Record<string, any> | null {
-	const candidates = [
-		join(homedir(), ".config", "opencode", "opencode.json"),
-		join(homedir(), ".opencode", "opencode.json"),
-	];
-	for (const p of candidates) {
-		try {
-			const raw = readFileSync(p, "utf-8");
-			return JSON.parse(raw);
-		} catch {}
-	}
-	return null;
-}
-
-/** Parse "ollama/kimi-k2.7-code" -> { providerID: "ollama", modelID: "kimi-k2.7-code" } */
-function parseModel(
-	modelStr: string,
-): { providerID: string; modelID: string } | null {
-	if (!modelStr || typeof modelStr !== "string") return null;
-	const parts = modelStr.split("/");
-	if (parts.length >= 2) {
-		return { providerID: parts[0], modelID: parts.slice(1).join("/") };
-	}
-	return null;
 }
 
 export function createDelegateTaskTool(deps: DelegateTaskDeps) {

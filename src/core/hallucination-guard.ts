@@ -8,7 +8,8 @@
  *   4. Reject + escalate if threshold not met
  */
 
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { isAbsolute, join, resolve } from "node:path";
 import { Logger } from "../utils/logger.js";
 
 export interface WriteEvidence {
@@ -77,10 +78,19 @@ export function validateWrite(
     violations.push("No files cited in response. Agent must reference affected files.");
   }
 
-  // 2. Scope check — claimed files must be in plan or exist
+  // 2. Scope check — claimed files must be in plan or exist within workingDir
   for (const f of evidence.claimedFiles) {
+    // Reject absolute paths outside workingDir (security: prevent /etc/passwd bypass)
+    if (isAbsolute(f)) {
+      const resolved = resolve(f);
+      const resolvedWorking = resolve(workingDir);
+      if (!resolved.startsWith(resolvedWorking)) {
+        violations.push(`File '${f}' is an absolute path outside the project directory. Possible hallucination or security violation.`);
+        continue;
+      }
+    }
     const inScope = scopeFiles.some((s) => s.endsWith(f) || f.endsWith(s) || s === f);
-    const exists = existsSync(`${workingDir}/${f}`) || existsSync(f);
+    const exists = existsSync(join(workingDir, f));
     if (!inScope && !exists) {
       violations.push(`File '${f}' not found and not in planned scope. Possible hallucination.`);
     }

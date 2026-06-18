@@ -4,6 +4,65 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-06-18
+
+### Architecture: God Class Split + Integration Tests
+
+### Added
+- **SessionManager** (`src/core/session-manager.ts`, 325 lines) — extracted from MissionController. Owns all session lifecycle logic: `createSession`, `promptSession`, `pollSession`, `pollForFile`, model fallback chain, circuit breaker, rate limiter. Exposes introspection getters (`getModelFailures`, `getBrokenModels`, `getRateLimiter`) for testing.
+- **MissionStore** (`src/core/mission-store.ts`, 201 lines) — extracted from MissionController. Owns persistence: `saveMissionState`, `loadMissionsFromDisk`, `startCleanup`, `stopCleanup`, `startMemoryPurge`.
+- **28 integration tests** for SessionManager and MissionStore (13 + 15):
+  - SessionManager: primary model success, fallback, both-fail, circuit breaker tracking, prompt tracking, SDK status polling, local map fallback, file polling, rate limiter
+  - MissionStore: save/load state.json, restore executing/hold/retrying missions, ignore completed, handle corrupted JSON, cleanup old dirs, memory purge
+
+### Changed
+- **MissionController** reduced from 1613 → 1252 lines (22% smaller). Now delegates to SessionManager and MissionStore instead of containing all logic inline.
+- **SessionManager**: createSession now works when no model is configured (previously threw "unknown error" — now lets SDK use its default model).
+- **Shared `sessions` Map pattern**: both SessionManager and MissionStore receive shared maps in their constructors and mutate in place, preserving the existing sharing with event-handler and delegate-task tool.
+
+## [2.3.0] - 2026-06-18
+
+### Major Overhaul — Critical Bug Fixes, Deduplication, Dead Code Cleanup
+
+### Fixed (Critical Bugs)
+- **`Logger.stop()` was unreachable** — `process.exit(0)` ran before `Logger.stop()` in the shutdown handler, so the final log buffer flush never happened. Reordered to `Logger.stop()` → `process.exit(0)`.
+- **`writeFileAtomicSync` never cleaned up temp files** — the catch block was empty. Now calls `unlinkSync(tmpPath)` on failure to prevent temp file leaks in `os.tmpdir()`.
+- **`revertBackup` git_commit used `--soft` reset** — `git reset --soft` only moves HEAD, working tree stays mutated. Changed to `--hard` to actually revert files.
+- **`revertBackup` directory strategy left orphan files** — only copied snapshot files over current ones. Now deletes files that exist in the project but NOT in the snapshot (created during the mission).
+- **`updateTodoStatus` race condition** — read-modify-write was not atomic across concurrent calls. Now uses `updateFileAtomicSync()` with a callback updater, preventing lost updates when parallel tasks complete simultaneously.
+- **Shell injection in `revertBackup`** — `execSync` with string interpolation replaced by `execFileSync` with arg arrays throughout `backup.ts`.
+- **Fast-mode notifications sent to public ntfy topics** — `notify({ ntfyTopic: String(this.config.mode) })` sent mission events to `https://ntfy.sh/fast` (public). Now uses the user's configured `notifyConfig` and only sends when actually configured.
+- **`pollSession` could run 20 minutes instead of 10** — if the SDK status API loop timed out without throwing, it fell through to a second polling loop. Added `return` after SDK loop exhaustion.
+- **`loadMissionTodos` didn't parse `[~]` (in_progress)** — the duplicated inline parser only matched `[ ]` and `[x]`. Replaced with shared `parseTodos()` call, eliminating the divergence.
+- **`maxParallelWorkers` default mismatch** — `constants.ts` defaulted to 5, `config-handler.ts` hard-capped to 3. Aligned default to 3.
+- **`sparkPerm` typo** — used `skills` (plural) instead of `skill` (singular). Spark's skill permission was silently ignored. Fixed.
+- **`looksLikeTaskRequest` had dead branch** — `(!hasWeakSignal && strongKeywords.some(...))` was fully subsumed by `hasStrongKeyword`. Simplified to `return hasStrongKeyword`.
+- **Logger rotation never ran** — `Logger.rotate()` was defined but never called. Now called on `init()`. Also used `require("node:fs")` inside ESM module — replaced with already-imported fs functions.
+- **Logger intervals not unref'd** — `setInterval` for flush timer kept process alive. Added `.unref()`.
+- **Hallucination guard absolute-path bypass** — `existsSync(f)` for absolute `f` checked the real filesystem, so `/etc/passwd` passed the scope check. Now rejects absolute paths outside `workingDir`.
+- **Backup copies `.env`/secrets** — directory snapshot didn't skip `.env`, `.env.local`, `.env.production`, `.env.staging`. Added to skip list.
+
+### Changed (Architecture)
+- **Deduplicated `loadUserConfig`/`parseModel`** — was copy-pasted in both `mission-controller.ts` and `delegate-task.ts`. Extracted to shared `utils/config-loader.ts` with mtime-based caching (eliminates ~300 sync disk reads per 50-task mission).
+- **Deduplicated `resolveAgentAlias`** — was duplicated in `constants.ts` and `delegate-task.ts`. Now `delegate-task.ts` imports from `constants.ts`.
+- **Consolidated `MissionState`/`MissionCtx` types** — `core/types.ts` had unused dead types (`DiagnosticReport`, `StuckReason`, `WatchdogConfig`, `DEFAULT_WATCHDOG`) with divergent `MissionState`/`MissionCtx` definitions. Cleaned to one canonical set.
+- **`backup.ts` git commands use `execFileSync`** — all `execSync(\`git ... "${var}"\`)` replaced with `execFileSync("git", [...args])` to prevent shell injection.
+
+### Removed (Dead Code)
+- **`src/utils/provider-lock.ts`** — deprecated no-op since v2.1.6. Deleted along with its test file.
+- **`src/core/types.ts` dead types** — `StuckReason`, `DiagnosticReport`, `WatchdogConfig`, `DEFAULT_WATCHDOG`, old `MissionCtx` with unused fields (`loopCounts`, `diagnostics`, `startTime`, `lastProgressAt`). All removed.
+- **Unused `FastModeConfig` import** in `index.ts`.
+
+## [2.2.1] - 2026-06-18
+
+### Fixed
+- **Critical: Plan/todo files never created** — root cause was absolute path mismatch.
+  - `mission-controller.start()` sent **absolute paths** (e.g. `/Users/.../.opencode/plans/{slug}/plan.md`) to the architect agent in prompts, but the architect's write permissions use **relative globs** (`.opencode/plans/**`). OpenCode silently denied the write, the file was never created, and `pollForFile()` timed out after 5 minutes with no visible error.
+  - Fix: All agent prompts now use **relative paths** (`.opencode/plans/{slug}/plan.md`, `.opencode/todo/{slug}.md`) which match the permission globs.
+  - Same fix applied to `buildTaskPrompt()` (engineer todo path) and `runAudit()` (audit result path).
+- **Silent timeout failure** — when `pollForFile()` timed out, the error was caught by the event handler and logged to stderr only, with no TUI toast. Now emits a visible error toast with actionable message and sets mission state to `failed`.
+- **Mission memory not persisted after every task** — `saveMissionState()` was only called at state transitions (planning→executing, executing→completed). If the process crashed mid-task, accumulated `TaskMemoryEntry[]` context was lost. Now `saveMissionState()` is called after every `addTaskMemory()` — on success, audit-fail, and error-fail paths.
+
 ## [2.2.0] - 2026-06-18
 
 ### Added

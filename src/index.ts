@@ -11,7 +11,6 @@ import { FastModeController } from "./core/fast-mode.js";
 import { TokenBudgetManager } from "./core/token-budget.js";
 import { validateWrite } from "./core/hallucination-guard.js";
 import type { GuardResult } from "./core/hallucination-guard.js";
-import type { FastModeConfig } from "./types.js";
 
 const plugin: Plugin = async (input) => {
 	const { client, directory } = input;
@@ -42,8 +41,6 @@ const plugin: Plugin = async (input) => {
 		fastController = new FastModeController({
 			config: modeCfg,
 			onMissionExecute: async (_slug: string) => {
-				// Bridge: in production, this delegates to MissionController's fast execution path.
-				// For now, fast-mode missions run independently via the watcher queue.
 				Logger.log("info", "fast-mode", `Executing mission: ${_slug}`);
 			},
 			guardFn: modeCfg.preWriteAudit
@@ -56,6 +53,7 @@ const plugin: Plugin = async (input) => {
 				enableAutoSummarize: modeCfg.enableAutoSummarize,
 				maxTokensPerResponse: modeCfg.maxTokensPerResponse,
 			}),
+			notifyConfig: cfg.notify as any,
 		});
 		fastController.startWatch(5000);
 		Logger.log("info", "plugin", "Fast Mode watcher started");

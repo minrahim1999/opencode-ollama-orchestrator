@@ -44,7 +44,7 @@ export function loadOrchestratorConfig(directory: string): {
 	let agentNames = DEFAULT_NAMES;
 	let pluginOpts: any = {};
 	const opts = {
-		maxParallelWorkers: 5,
+		maxParallelWorkers: 3,
 		maxRetries: 3,
 		verbose: false,
 		requireApproval: false,

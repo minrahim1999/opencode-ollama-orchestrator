@@ -2,7 +2,7 @@
  * Backup / Revert utility for the orchestrator.
  * Tries git first (stash or commit), falls back to directory snapshot.
  */
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import {
 	cpSync,
 	existsSync,
@@ -21,6 +21,18 @@ interface BackupResult {
 
 const BACKUP_DIR = ".opencode-backups";
 const MAX_BACKUPS = 10; // Keep last 10 mission backups
+
+// Files/dirs to skip in both backup and restore (sensitive + non-essential)
+const SKIP_NAMES = new Set([
+	"node_modules",
+	".git",
+	BACKUP_DIR,
+	".opencode",
+	".env",
+	".env.local",
+	".env.production",
+	".env.staging",
+]);
 
 /** Check if directory is inside a git repo */
 function isGitRepo(dir: string): boolean {
@@ -58,12 +70,13 @@ export function createBackup(
 		if (hasUncommittedChanges(directory)) {
 			try {
 				const stashMsg = `opencode-backup:${missionSlug}:${timestamp}`;
-				execSync(`git stash push -m "${stashMsg}" --include-untracked`, {
-					cwd: directory,
-					stdio: "pipe",
-				});
+				execFileSync(
+					"git",
+					["stash", "push", "-m", stashMsg, "--include-untracked"],
+					{ cwd: directory, stdio: "pipe" },
+				);
 				// Get stash ref
-				const stashList = execSync("git stash list", {
+				const stashList = execFileSync("git", ["stash", "list"], {
 					cwd: directory,
 					encoding: "utf-8",
 					stdio: "pipe",
@@ -79,14 +92,12 @@ export function createBackup(
 
 		// Strategy 2: Git commit (if clean working tree, create empty commit as marker)
 		try {
-			execSync(
-				`git commit --allow-empty -m "opencode-backup:${missionSlug}:${timestamp}"`,
-				{
-					cwd: directory,
-					stdio: "pipe",
-				},
+			execFileSync(
+				"git",
+				["commit", "--allow-empty", "-m", `opencode-backup:${missionSlug}:${timestamp}`],
+				{ cwd: directory, stdio: "pipe" },
 			);
-			const hash = execSync("git rev-parse HEAD", {
+			const hash = execFileSync("git", ["rev-parse", "HEAD"], {
 				cwd: directory,
 				encoding: "utf-8",
 				stdio: "pipe",
@@ -108,19 +119,12 @@ export function createBackup(
 		const snapshotDir = join(backupRoot, `${missionSlug}-${timestamp}`);
 		mkdirSync(snapshotDir, { recursive: true });
 
-		// Copy relevant files (skip node_modules, .git, backup dir itself)
+		// Copy relevant files (skip sensitive + non-essential)
 		const entries = readdirSync(directory, { withFileTypes: true });
 		for (const entry of entries) {
-			const name = entry.name;
-			if (
-				name === "node_modules" ||
-				name === ".git" ||
-				name === BACKUP_DIR ||
-				name === ".opencode"
-			)
-				continue;
-			const src = join(directory, name);
-			const dest = join(snapshotDir, name);
+			if (SKIP_NAMES.has(entry.name)) continue;
+			const src = join(directory, entry.name);
+			const dest = join(snapshotDir, entry.name);
 			try {
 				cpSync(src, dest, { recursive: true, force: true });
 			} catch {
@@ -141,7 +145,8 @@ export function revertBackup(directory: string, backup: BackupResult): boolean {
 
 	if (backup.type === "git_stash" && backup.path) {
 		try {
-			execSync(`git stash pop ${backup.path}`, {
+			// Use execFileSync to avoid shell injection
+			execFileSync("git", ["stash", "pop", backup.path], {
 				cwd: directory,
 				stdio: "pipe",
 			});
@@ -153,8 +158,8 @@ export function revertBackup(directory: string, backup: BackupResult): boolean {
 
 	if (backup.type === "git_commit" && backup.commitHash) {
 		try {
-			// Soft reset to before the empty backup commit
-			execSync(`git reset --soft ${backup.commitHash}^`, {
+			// Hard reset to before the backup commit — reverts files too
+			execFileSync("git", ["reset", "--hard", `${backup.commitHash}^`], {
 				cwd: directory,
 				stdio: "pipe",
 			});
@@ -167,24 +172,33 @@ export function revertBackup(directory: string, backup: BackupResult): boolean {
 	if (backup.type === "directory" && backup.path) {
 		try {
 			// Copy snapshot files back to project directory
-			const entries = readdirSync(backup.path, { withFileTypes: true });
-			for (const entry of entries) {
-				const name = entry.name;
-				if (
-					name === "node_modules" ||
-					name === ".git" ||
-					name === BACKUP_DIR ||
-					name === ".opencode"
-				)
-					continue;
-				const src = join(backup.path, name);
-				const dest = join(directory, name);
+			const snapshotEntries = readdirSync(backup.path, { withFileTypes: true });
+			const snapshotNames = new Set(snapshotEntries.map((e) => e.name));
+
+			for (const entry of snapshotEntries) {
+				if (SKIP_NAMES.has(entry.name)) continue;
+				const src = join(backup.path, entry.name);
+				const dest = join(directory, entry.name);
 				try {
 					cpSync(src, dest, { recursive: true, force: true });
 				} catch {
 					// Skip files we can't restore
 				}
 			}
+
+			// Delete files that exist in project but NOT in snapshot (created during mission)
+			const currentEntries = readdirSync(directory, { withFileTypes: true });
+			for (const entry of currentEntries) {
+				if (SKIP_NAMES.has(entry.name)) continue;
+				if (!snapshotNames.has(entry.name)) {
+					try {
+						rmSync(join(directory, entry.name), { recursive: true, force: true });
+					} catch {
+						// Ignore deletion errors
+					}
+				}
+			}
+
 			return true;
 		} catch {
 			return false;

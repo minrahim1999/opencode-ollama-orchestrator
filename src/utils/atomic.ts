@@ -9,6 +9,7 @@ import {
 	mkdirSync,
 	readFileSync,
 	renameSync,
+	unlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,9 +30,9 @@ export function writeFileAtomicSync(path: string, content: string): void {
 	} catch (err) {
 		// Clean up temp file on error
 		try {
-			/* ignore cleanup errors */
+			unlinkSync(tmpPath);
 		} catch {
-			/* ignore */
+			/* ignore cleanup errors */
 		}
 		throw err;
 	}

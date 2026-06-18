@@ -16,7 +16,7 @@ import type { ModeRuntimeConfig } from "./mode.js";
 import type { TokenBudgetManager } from "./token-budget.js";
 import type { GuardResult } from "./hallucination-guard.js";
 import { Logger } from "../utils/logger.js";
-import { notify } from "../utils/notifier.js";
+import { notify, type NotifyConfig } from "../utils/notifier.js";
 
 export interface FastMissionEntry {
   slug: string;
@@ -38,17 +38,20 @@ export class FastModeController {
   private readonly guardFn?: (response: string, scope: string[]) => GuardResult;
   private readonly budgetMgr?: TokenBudgetManager;
   private readonly config: ModeRuntimeConfig;
+  private readonly notifyConfig: NotifyConfig;
 
   constructor(params: {
     config: ModeRuntimeConfig;
     onMissionExecute: (slug: string) => Promise<void>;
     guardFn?: (response: string, scope: string[]) => GuardResult;
     budgetMgr?: TokenBudgetManager;
+    notifyConfig?: NotifyConfig;
   }) {
     this.config = params.config;
     this.onMissionExecute = params.onMissionExecute;
     this.guardFn = params.guardFn;
     this.budgetMgr = params.budgetMgr;
+    this.notifyConfig = params.notifyConfig ?? {};
   }
 
   /** Start the 24/7 watcher loop */
@@ -125,26 +128,24 @@ export class FastModeController {
         ? { totalConsumed: budgetSnap.totalConsumed, summarizeCount: budgetSnap.summarizeCount }
         : undefined;
 
-      notify(
-        { ntfyTopic: String(this.config.mode) },
-        {
+      if (this.notifyConfig.ntfyTopic || this.notifyConfig.webhookUrl) {
+        notify(this.notifyConfig, {
           type: "mission_completed",
           missionSlug: next,
           message: `${next}: ${mission.description}`,
-        }
-      );
+        }).catch(() => {});
+      }
     } catch (err) {
       Logger.log("error", "fast-mode", `Mission ${next} failed: ${String(err)}`);
       mission.state = "failed";
 
-      notify(
-        { ntfyTopic: String(this.config.mode) },
-        {
+      if (this.notifyConfig.ntfyTopic || this.notifyConfig.webhookUrl) {
+        notify(this.notifyConfig, {
           type: "mission_failed",
           missionSlug: next,
           message: `${next}: ${String(err)}`,
-        }
-      );
+        }).catch(() => {});
+      }
     } finally {
       clearTimeout(timeoutHandle);
       this.activeMission = undefined;

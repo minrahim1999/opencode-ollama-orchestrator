@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { writeFileAtomicSync } from "./atomic.js";
+import { updateFileAtomicSync, writeFileAtomicSync } from "./atomic.js";
 
 export interface ParsedTodo {
 	id: string;
@@ -135,25 +135,25 @@ export function updateTodoStatus(
 	const path = findTodoFile(directory, slug);
 	if (!existsSync(path)) return;
 
-	const content = readFileSync(path, "utf-8");
 	const marker =
 		status === "completed" ? "x" : status === "in_progress" ? "~" : " ";
 
-	// Find the line containing this taskId and replace its checkbox
-	const lines = content.split("\n");
-	for (let i = 0; i < lines.length; i++) {
-		const line = lines[i];
-		if (line.includes(`${taskId}:`)) {
-			lines[i] = line.replace(/^- \[(?: |x|~)\]/, `- [${marker}]`);
-			if (evidence) {
-				lines.splice(i + 1, 0, `  - Evidence: ${evidence}`);
-				i++; // skip the inserted line
+	// Use updateFileAtomicSync for atomic read-modify-write (prevents race condition)
+	updateFileAtomicSync(path, (content) => {
+		const lines = content.split("\n");
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i];
+			if (line.includes(`${taskId}:`)) {
+				lines[i] = line.replace(/^- \[(?: |x|~)\]/, `- [${marker}]`);
+				if (evidence) {
+					lines.splice(i + 1, 0, `  - Evidence: ${evidence}`);
+					i++; // skip the inserted line
+				}
+				break; // only update first match
 			}
-			break; // only update first match
 		}
-	}
-
-	writeFileAtomicSync(path, lines.join("\n"));
+		return lines.join("\n");
+	});
 }
 
 /** Export parsed todos to a JSON file for programmatic access */

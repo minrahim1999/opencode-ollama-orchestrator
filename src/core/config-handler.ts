@@ -168,7 +168,7 @@ function defaultPermission(role: string): AgentConfig["permission"] {
 		list: "allow",
 		webfetch: "allow",
 		websearch: "allow",
-		skills: { "*": "allow" },
+		skill: { "*": "allow" },
 		edit: "deny",
 		bash: "deny",
 		write: "deny",

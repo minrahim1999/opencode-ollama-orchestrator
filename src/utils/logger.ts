@@ -2,7 +2,7 @@
  * Structured JSON logger for production observability.
  * Logs to both stderr (for TUI visibility) and a daily-rotated JSON file.
  */
-import { appendFileSync, existsSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
@@ -44,12 +44,14 @@ class LoggerImpl {
 		} catch {
 			this.logDir = null;
 		}
+		this.rotate(projectDir); // Rotate old logs on startup
 		this.startFlushTimer();
 	}
 
 	private startFlushTimer() {
 		if (this.flushTimer) return;
 		this.flushTimer = setInterval(() => this.flush(), this.FLUSH_INTERVAL_MS);
+		this.flushTimer.unref?.(); // Don't keep process alive for log flushes
 	}
 
 	/** Stop flush timer (for graceful shutdown) */
@@ -110,7 +112,6 @@ class LoggerImpl {
 	rotate(projectDir: string): void {
 		try {
 			const dir = join(projectDir, ".opencode", "logs");
-			const { readdirSync, statSync, rmSync } = require("node:fs");
 			if (!existsSync(dir)) return;
 			const now = Date.now();
 			const MAX_AGE_DAYS = 7;

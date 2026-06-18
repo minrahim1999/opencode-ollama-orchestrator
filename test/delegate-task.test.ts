@@ -1,6 +1,7 @@
 /** @vitest-environment node */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDelegateTaskTool } from "../src/tools/delegate-task";
+import { clearConfigCache } from "../src/utils/config-loader";
 
 // Mock node:fs with partial mock — keep real fs but override readFileSync
 vi.mock("node:fs", async (importOriginal) => {
@@ -34,9 +35,10 @@ describe("createDelegateTaskTool", () => {
 			directory: "/fake/project",
 			sessions,
 		});
-	});
+		clearConfigCache(); // Clear config cache between tests
+		});
 
-	afterEach(() => {
+		afterEach(() => {
 		vi.clearAllMocks();
 	});
 
