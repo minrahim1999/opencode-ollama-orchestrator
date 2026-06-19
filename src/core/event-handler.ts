@@ -1,21 +1,24 @@
 /**
  * Automatic message handler — no commands needed.
- * Uses the OpenCode plugin SDK's `chat.message` hook to intercept new user messages
- * and trigger the full mission pipeline automatically.
+ * Uses the OpenCode plugin SDK's `chat.message` hook to intercept new user messages.
  *
- * BUG FIX (v2.5.0): Previously used the `event` hook listening for `message.created`,
- * which does not exist in OpenCode 1.17.x+. The pipeline never fired. Now uses
- * `chat.message` which is the SDK's dedicated hook for new user messages.
+ * DESIGN (v2.5.1): The chat.message hook does NOT auto-start the pipeline.
+ * Instead, it only handles /btw sideline questions. The strategist agent
+ * (the primary agent in the current session) processes the user's message
+ * normally and can call the question tool to show an interactive modal.
+ * Once the user confirms, the strategist calls the start_mission tool to
+ * launch the pipeline. This ensures the question modal works — subagent
+ * sessions are headless and cannot show TUI modals.
  */
 import type { MissionController } from "./mission-controller.js";
 
-const VERSION = "2.5.0";
+const VERSION = "2.5.1";
 
 /**
  * Create a chat.message hook handler.
  *
  * The OpenCode plugin SDK calls this hook when a new user message is received,
- * providing the message and its parts directly — no event type guessing needed.
+ * providing the message and its parts directly.
  *
  * @param input  - { sessionID, agent?, model?, messageID? }
  * @param output - { message: UserMessage, parts: Part[] }
@@ -42,6 +45,9 @@ export function createChatMessageHandler(controller: MissionController) {
 		if (!text) return;
 
 		// /btw sideline question — fire-and-forget, never a task request
+		// This is the ONLY thing the hook handles directly.
+		// Task detection and mission launching is handled by the strategist agent
+		// via the start_mission tool, so it can use the question modal first.
 		if (
 			text.trim().toLowerCase().startsWith("/btw ") ||
 			text.trim().toLowerCase().startsWith("btw ")
@@ -60,16 +66,10 @@ export function createChatMessageHandler(controller: MissionController) {
 			return;
 		}
 
-		if (!shouldIgnore(text) && looksLikeTaskRequest(text)) {
-			try {
-				await controller.start(text, true); // always automatic
-			} catch (err) {
-				console.error(
-					`[opencode-orchestrator v${VERSION}] Mission start failed:`,
-					err,
-				);
-			}
-		}
+		// All other messages are handled by the strategist agent in the current
+		// session. The strategist decides whether to ask a question (modal),
+		// answer directly, or call start_mission to launch the pipeline.
+		// We do NOT auto-start missions here — that would bypass the question modal.
 	};
 }
 

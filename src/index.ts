@@ -79,6 +79,23 @@ const plugin: Plugin = async (input) => {
 		"chat.message": createChatMessageHandler(controller),
 		tool: {
 			delegate_task: createDelegateTaskTool({ client, directory, sessions }),
+			start_mission: tool({
+				description:
+					"Start a multi-agent mission pipeline. The architect will create a plan, engineers will execute tasks in parallel, and the auditor will verify critical-path work. Call this AFTER the user confirms via the question tool.",
+				args: {
+					description: tool.schema
+						.string()
+						.describe("Full task description — what the mission should accomplish"),
+				},
+				execute: async (args: { description: string }) => {
+					try {
+						await controller.start(args.description, true);
+						return `Mission started: ${args.description.slice(0, 80)}`;
+					} catch (err) {
+						return `Mission start failed: ${String(err).slice(0, 200)}`;
+					}
+				},
+			}),
 			abort_mission: tool({
 				description:
 					"Abort all active orchestrator missions and mark them failed.",

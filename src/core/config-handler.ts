@@ -46,6 +46,7 @@ function defaultTools(role: string): AgentConfig["tools"] {
 		websearch: true,
 		task: true,
 		question: true,
+		start_mission: true,
 	};
 
 	const planOnly: AgentConfig["tools"] = {
@@ -114,6 +115,7 @@ function defaultPermission(role: string): AgentConfig["permission"] {
 		websearch: "allow",
 		task: "allow",
 		question: "allow",
+		start_mission: "allow",
 		skill: { "*": "allow" },
 	};
 

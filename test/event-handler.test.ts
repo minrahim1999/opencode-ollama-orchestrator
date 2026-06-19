@@ -163,7 +163,7 @@ describe("shouldIgnore", () => {
 });
 
 describe("createChatMessageHandler", () => {
-	it("triggers controller.start for task-like messages", async () => {
+	it("does NOT auto-start missions (v2.5.1 — strategist handles this)", async () => {
 		const mockController = {
 			start: vi.fn().mockResolvedValue(undefined),
 			spawnSideline: vi.fn(),
@@ -180,10 +180,9 @@ describe("createChatMessageHandler", () => {
 			},
 		);
 
-		expect(mockController.start).toHaveBeenCalledWith(
-			"Build a user authentication module with JWT",
-			true,
-		);
+		// The hook should NOT call start — the strategist agent does that
+		// via the start_mission tool after showing a question modal
+		expect(mockController.start).not.toHaveBeenCalled();
 	});
 
 	it("does not trigger for casual chat", async () => {
@@ -242,29 +241,5 @@ describe("createChatMessageHandler", () => {
 
 		expect(mockController.start).not.toHaveBeenCalled();
 		expect(mockController.spawnSideline).not.toHaveBeenCalled();
-	});
-
-	it("joins multiple text parts", async () => {
-		const mockController = {
-			start: vi.fn().mockResolvedValue(undefined),
-			spawnSideline: vi.fn(),
-		};
-		const handler = createChatMessageHandler(mockController as any);
-
-		await handler(
-			{ sessionID: "s1" },
-			{
-				message: { role: "user" },
-				parts: [
-					{ type: "text", text: "Build a login page" },
-					{ type: "text", text: "with dark mode" },
-				],
-			},
-		);
-
-		expect(mockController.start).toHaveBeenCalledWith(
-			"Build a login page\nwith dark mode",
-			true,
-		);
 	});
 });
