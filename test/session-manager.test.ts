@@ -232,9 +232,14 @@ describe("SessionManager", () => {
 			try {
 				// pollForFile uses sleep which uses setTimeout — advance timers
 				const promise = sm.pollForFile(filePath);
+				// Catch the rejection immediately to prevent unhandled rejection
+				const promiseCatch = promise.catch((e: Error) => e);
 				// Advance all timers rapidly
 				await vi.runAllTimersAsync();
-				await expect(promise).rejects.toThrow(/Timeout waiting for file/);
+				// Now check that it threw the expected error
+				const error = await promiseCatch;
+				expect(error).toBeInstanceOf(Error);
+				expect((error as Error).message).toMatch(/Timeout waiting for file/);
 			} finally {
 				vi.useRealTimers();
 			}
