@@ -4,6 +4,47 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-06-19
+
+### Critical Fix: Model Switching Was Completely Broken
+
+The orchestrator was not switching models between subagents — every subagent used the same (default/global) model throughout the entire pipeline. Three root causes identified and fixed:
+
+### Fixed (Critical Bugs)
+
+- **Bug #1: Automatic pipeline never fired (event-handler.ts)**
+  - The `event` hook listened for `message.created` — an event type that **does not exist** in OpenCode 1.17.x+. The SDK's actual event types are `message.updated`, `session.created`, `session.updated`, etc. There is no `message.created`.
+  - As a result, `controller.start()` was **never called automatically**. When the user typed a task and hit enter, OpenCode just answered with the current model. The entire multi-agent pipeline (architect → engineer → auditor) was dead on arrival.
+  - **Fix:** Switched from the `event` hook to the `chat.message` hook — the OpenCode plugin SDK's dedicated hook for intercepting new user messages. This hook provides `{ message: UserMessage, parts: Part[] }` directly, no event type guessing needed.
+  - Exported function renamed: `createEventHandler` → `createChatMessageHandler`.
+  - `index.ts` updated: `event:` hook → `"chat.message":` hook.
+
+- **Bug #2: session.create() does not accept model or agent (session-manager.ts)**
+  - The OpenCode SDK's `SessionCreateData.body` only accepts `{ parentID?, title? }`. There is **no `model` or `agent` field**. The plugin was passing `{ agent, model: { providerID, modelID } }` to `session.create`, which were silently ignored by the SDK.
+  - **Fix:** `session.create` now only sends `{ directory, title, parentID? }`. The `agent` and `model` are passed to `session.prompt()` instead, which is the correct SDK call for model/agent selection (`SessionPromptData.body` accepts `{ model?: { providerID, modelID }, agent?, parts }`).
+  - `promptSession()` now explicitly passes both `agent` and `model` on every prompt call, ensuring each subagent uses its configured model.
+  - Fallback model logic updated: the fallback model is now resolved and stored, then passed on `promptSession()` if the primary model's circuit breaker is open.
+
+- **Bug #3: delegate-task.ts had the same session.create issue**
+  - Same fix applied: `session.create` receives only `{ directory, title, parentID? }`. `session.prompt` receives `{ agent, model, parts }`.
+  - `parentID` is correctly kept on `session.create` (the SDK does accept it there).
+
+### Changed
+- `event-handler.ts`: `createEventHandler` → `createChatMessageHandler`. Hook type changed from `event` to `chat.message`.
+- `index.ts`: Hook registration changed from `event:` to `"chat.message":`.
+- `session-manager.ts`: Removed `agent` and `model` from all `session.create` calls (both primary and fallback paths). `promptSession()` now explicitly passes `agent` alongside `model`.
+- `delegate-task.ts`: Removed `agent` and `model` from `session.create`. Added `agent` and `model` to `session.prompt` call.
+
+### Added (Tests)
+- 5 new tests for `createChatMessageHandler`: task detection, casual chat rejection, `/btw` sideline routing, empty message handling, multi-part text joining.
+- 1 new test for `promptSession` model+agent passing (v2.5.0 fix verification).
+- Updated `createSession` tests to verify `session.create` does NOT receive `model`/`agent`.
+- Updated `delegate-task` tests to verify model+agent are on `session.prompt`, not `session.create`.
+
+### Test Results
+- 214 tests passing (16 test files)
+- 0 failures (1 pre-existing unhandled rejection from fake-timers edge case in `pollForFile` test)
+
 ## [2.4.0] - 2026-06-18
 
 ### Architecture: God Class Split + Integration Tests

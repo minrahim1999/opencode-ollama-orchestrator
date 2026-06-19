@@ -58,7 +58,7 @@ describe("SessionManager", () => {
 	});
 
 	describe("createSession", () => {
-		it("creates a session with primary model", async () => {
+		it("creates a session without model/agent on create (v2.5.0 fix)", async () => {
 			(statSync as any).mockImplementation(() => { throw new Error("ENOENT"); });
 			(readFileSync as any).mockReturnValue(JSON.stringify({
 				agent: { engineer: { model: "ollama/kimi-k2.7-code" } },
@@ -67,11 +67,29 @@ describe("SessionManager", () => {
 			const result = await sm.createSession("engineer", "Test task");
 			expect(result.id).toBe("session-123");
 
+			// session.create should NOT have model or agent (SDK doesn't accept them)
 			const createCall = mockClient.v2.session.create.mock.calls[0][0];
-			expect(createCall.model).toEqual({
+			expect(createCall.model).toBeUndefined();
+			expect(createCall.agent).toBeUndefined();
+			expect(createCall.title).toBe("Test task");
+		});
+
+		it("passes model+agent on promptSession (v2.5.0 fix)", async () => {
+			(statSync as any).mockImplementation(() => { throw new Error("ENOENT"); });
+			(readFileSync as any).mockReturnValue(JSON.stringify({
+				agent: { engineer: { model: "ollama/kimi-k2.7-code" } },
+			}));
+
+			await sm.createSession("engineer", "Test task");
+			await sm.promptSession("session-123", "engineer", "Do the work");
+
+			// session.prompt SHOULD have model and agent
+			const promptCall = mockClient.v2.session.prompt.mock.calls[0][0];
+			expect(promptCall.model).toEqual({
 				providerID: "ollama",
 				modelID: "kimi-k2.7-code",
 			});
+			expect(promptCall.agent).toBe("engineer");
 		});
 
 		it("falls back to global model when agent has no model", async () => {
@@ -82,11 +100,9 @@ describe("SessionManager", () => {
 			const result = await sm.createSession("engineer", "Test task");
 			expect(result.id).toBe("session-123");
 
+			// The model should be resolved for prompt, not create
 			const createCall = mockClient.v2.session.create.mock.calls[0][0];
-			expect(createCall.model).toEqual({
-				providerID: "ollama",
-				modelID: "deepseek-v4-flash",
-			});
+			expect(createCall.model).toBeUndefined();
 		});
 
 		it("creates session without model when none configured", async () => {

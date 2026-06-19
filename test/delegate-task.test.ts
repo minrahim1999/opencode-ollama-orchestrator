@@ -36,14 +36,14 @@ describe("createDelegateTaskTool", () => {
 			sessions,
 		});
 		clearConfigCache(); // Clear config cache between tests
-		});
+	});
 
-		afterEach(() => {
+	afterEach(() => {
 		vi.clearAllMocks();
 	});
 
 	describe("model resolution", () => {
-		it("uses per-agent model from user config", async () => {
+		it("passes per-agent model+agent on prompt (v2.5.0 fix)", async () => {
 			const userConfig = {
 				agent: {
 					engineer: { model: "ollama/kimi-k2.7-code" },
@@ -53,15 +53,21 @@ describe("createDelegateTaskTool", () => {
 
 			await tool.execute({ agent: "worker", task: "Implement auth" });
 
+			// session.create should NOT have model or agent
 			const createCall = mockClient.v2.session.create.mock.calls[0][0];
-			expect(createCall.model).toEqual({
+			expect(createCall.model).toBeUndefined();
+			expect(createCall.agent).toBeUndefined();
+
+			// session.prompt SHOULD have model and agent
+			const promptCall = mockClient.v2.session.prompt.mock.calls[0][0];
+			expect(promptCall.model).toEqual({
 				providerID: "ollama",
 				modelID: "kimi-k2.7-code",
 			});
-			expect(createCall.agent).toBe("engineer");
+			expect(promptCall.agent).toBe("engineer");
 		});
 
-		it("falls back to global model when agent has no model", async () => {
+		it("falls back to global model on prompt when agent has no model", async () => {
 			const userConfig = {
 				model: "ollama/deepseek-v4-flash",
 				agent: {
@@ -72,12 +78,12 @@ describe("createDelegateTaskTool", () => {
 
 			await tool.execute({ agent: "planner", task: "Plan auth" });
 
-			const createCall = mockClient.v2.session.create.mock.calls[0][0];
-			expect(createCall.model).toEqual({
+			const promptCall = mockClient.v2.session.prompt.mock.calls[0][0];
+			expect(promptCall.model).toEqual({
 				providerID: "ollama",
 				modelID: "deepseek-v4-flash",
 			});
-			expect(createCall.agent).toBe("architect");
+			expect(promptCall.agent).toBe("architect");
 		});
 
 		it("passes through when no model is configured at all", async () => {
@@ -87,7 +93,10 @@ describe("createDelegateTaskTool", () => {
 
 			const createCall = mockClient.v2.session.create.mock.calls[0][0];
 			expect(createCall.model).toBeUndefined();
-			expect(createCall.agent).toBe("engineer");
+
+			const promptCall = mockClient.v2.session.prompt.mock.calls[0][0];
+			expect(promptCall.agent).toBe("engineer");
+			expect(promptCall.model).toBeUndefined();
 		});
 
 		it("handles model strings with multiple slashes", async () => {
@@ -100,14 +109,14 @@ describe("createDelegateTaskTool", () => {
 
 			await tool.execute({ agent: "expert", task: "Diagnose issue" });
 
-			const createCall = mockClient.v2.session.create.mock.calls[0][0];
-			expect(createCall.model).toEqual({
+			const promptCall = mockClient.v2.session.prompt.mock.calls[0][0];
+			expect(promptCall.model).toEqual({
 				providerID: "ollama",
 				modelID: "namespace/model-name",
 			});
 		});
 
-		it("includes parentID when provided", async () => {
+		it("includes parentID on session.create when provided", async () => {
 			const userConfig = {
 				agent: {
 					auditor: { model: "ollama/kimi-k2.6" },
@@ -121,9 +130,13 @@ describe("createDelegateTaskTool", () => {
 				parentSessionID: "parent-456",
 			});
 
+			// parentID goes on session.create (SDK accepts it there)
 			const createCall = mockClient.v2.session.create.mock.calls[0][0];
 			expect(createCall.parentID).toBe("parent-456");
-			expect(createCall.model).toEqual({
+
+			// model+agent go on session.prompt
+			const promptCall = mockClient.v2.session.prompt.mock.calls[0][0];
+			expect(promptCall.model).toEqual({
 				providerID: "ollama",
 				modelID: "kimi-k2.6",
 			});
@@ -131,14 +144,14 @@ describe("createDelegateTaskTool", () => {
 	});
 
 	describe("alias resolution", () => {
-		it("passes through recognized alias to resolved name", async () => {
+		it("passes through recognized alias to resolved name on prompt", async () => {
 			(readFileSync as any).mockReturnValue("{}");
 
 			// "worker" is alias for "engineer", and no custom names configured
 			await tool.execute({ agent: "worker", task: "Build thing" });
 
-			const createCall = mockClient.v2.session.create.mock.calls[0][0];
-			expect(createCall.agent).toBe("engineer");
+			const promptCall = mockClient.v2.session.prompt.mock.calls[0][0];
+			expect(promptCall.agent).toBe("engineer");
 		});
 	});
 });

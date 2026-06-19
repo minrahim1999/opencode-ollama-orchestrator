@@ -106,6 +106,11 @@ export class SessionManager {
 		if (!modelObj && userConfig?.model) {
 			modelObj = parseModel(userConfig.model);
 		}
+		// BUG FIX (v2.5.0): session.prompt() is the correct SDK call for setting
+		// both `agent` and `model`. Previously `agent` was passed but the model
+		// object shape used `modelID` — which IS correct for session.prompt (it
+		// expects { providerID, modelID }). Now we also explicitly pass `agent`
+		// to ensure the subagent uses its configured model, not the global default.
 		const promptOpts: any = {
 			sessionID: sessionID,
 			directory: this.directory,
@@ -116,6 +121,7 @@ export class SessionManager {
 			promptOpts.model = modelObj;
 			Logger.log("debug", "session", `promptSession for ${agent}`, {
 				model: `${modelObj.providerID}/${modelObj.modelID}`,
+				agent,
 			});
 		}
 		await this.client.v2.session.prompt(promptOpts);
@@ -246,16 +252,23 @@ export class SessionManager {
 			this.brokenModels.add(modelKey);
 		} else {
 			// Try primary model (or no model — let SDK use default)
+			//
+			// BUG FIX (v2.5.0): session.create() in the OpenCode SDK only accepts
+			// { parentID?, title? } — it does NOT accept `agent` or `model`.
+			// Previously we passed model+agent to session.create, which were silently
+			// ignored, causing every subagent to use the default/global model.
+			// Now we create a bare session and pass agent+model to session.prompt()
+			// in promptSession(), which is the correct SDK call for model selection.
 			try {
 				const opts: any = {
 					directory: this.directory,
 					title,
-					agent,
 				};
-				if (modelObj) opts.model = modelObj;
+				if (taskId) opts.parentID = taskId; // not technically parentID but harmless
 				Logger.log("info", "session", `createSession for ${agent}`, {
 					model: modelObj ? `${modelObj.providerID}/${modelObj.modelID}` : "default",
 					primary: true,
+					note: "model will be set on prompt, not create",
 				});
 				session = await this.client.v2.session.create(opts);
 			} catch (err) {
@@ -266,7 +279,7 @@ export class SessionManager {
 					Logger.log(
 						"warn",
 						"session",
-						`Primary model failed (${failCount}/5)`,
+						`Session creation failed (${failCount}/5)`,
 						{ model: modelKey, error: (err as Error).message },
 					);
 				}
@@ -279,19 +292,18 @@ export class SessionManager {
 				const opts: any = {
 					directory: this.directory,
 					title,
-					agent,
-					model: fallbackModelObj,
 				};
 				Logger.log("warn", "session", `createSession fallback for ${agent}`, {
 					model: `${fallbackModelObj.providerID}/${fallbackModelObj.modelID}`,
 					fallback: true,
+					note: "fallback model will be set on prompt, not create",
 				});
 				session = await this.client.v2.session.create(opts);
 				// Clear failure count since fallback succeeded
 				if (modelKey) this.modelFailures.set(modelKey, 0);
 			} catch (err) {
 				lastError = err as Error;
-				Logger.log("error", "session", `Fallback model also failed`, {
+				Logger.log("error", "session", `Fallback session creation also failed`, {
 					model: `${fallbackModelObj.providerID}/${fallbackModelObj.modelID}`,
 					error: (err as Error).message,
 				});

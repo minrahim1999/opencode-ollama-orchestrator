@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+	createChatMessageHandler,
 	looksLikeTaskRequest,
 	shouldIgnore,
 } from "../src/core/event-handler.js";
@@ -158,5 +159,108 @@ describe("shouldIgnore", () => {
 	it("does not ignore meaningful text", () => {
 		expect(shouldIgnore("build a login page")).toBe(false);
 		expect(shouldIgnore("ok let's build something")).toBe(false);
+	});
+});
+
+describe("createChatMessageHandler", () => {
+	it("triggers controller.start for task-like messages", async () => {
+		const mockController = {
+			start: vi.fn().mockResolvedValue(undefined),
+			spawnSideline: vi.fn(),
+		};
+		const handler = createChatMessageHandler(mockController as any);
+
+		await handler(
+			{ sessionID: "s1", agent: "strategist" },
+			{
+				message: { role: "user" },
+				parts: [{ type: "text", text: "Build a user authentication module with JWT" }],
+			},
+		);
+
+		expect(mockController.start).toHaveBeenCalledWith(
+			"Build a user authentication module with JWT",
+			true,
+		);
+	});
+
+	it("does not trigger for casual chat", async () => {
+		const mockController = {
+			start: vi.fn().mockResolvedValue(undefined),
+			spawnSideline: vi.fn(),
+		};
+		const handler = createChatMessageHandler(mockController as any);
+
+		await handler(
+			{ sessionID: "s1" },
+			{
+				message: { role: "user" },
+				parts: [{ type: "text", text: "thanks for the help" }],
+			},
+		);
+
+		expect(mockController.start).not.toHaveBeenCalled();
+	});
+
+	it("routes /btw to spawnSideline", async () => {
+		const mockController = {
+			start: vi.fn().mockResolvedValue(undefined),
+			spawnSideline: vi.fn(),
+		};
+		const handler = createChatMessageHandler(mockController as any);
+
+		await handler(
+			{ sessionID: "s1" },
+			{
+				message: { role: "user" },
+				parts: [{ type: "text", text: "/btw what is OAuth2 PKCE?" }],
+			},
+		);
+
+		expect(mockController.spawnSideline).toHaveBeenCalledWith("what is OAuth2 PKCE?");
+		expect(mockController.start).not.toHaveBeenCalled();
+	});
+
+	it("ignores empty messages", async () => {
+		const mockController = {
+			start: vi.fn().mockResolvedValue(undefined),
+			spawnSideline: vi.fn(),
+		};
+		const handler = createChatMessageHandler(mockController as any);
+
+		await handler(
+			{ sessionID: "s1" },
+			{
+				message: { role: "user" },
+				parts: [],
+			},
+		);
+
+		expect(mockController.start).not.toHaveBeenCalled();
+		expect(mockController.spawnSideline).not.toHaveBeenCalled();
+	});
+
+	it("joins multiple text parts", async () => {
+		const mockController = {
+			start: vi.fn().mockResolvedValue(undefined),
+			spawnSideline: vi.fn(),
+		};
+		const handler = createChatMessageHandler(mockController as any);
+
+		await handler(
+			{ sessionID: "s1" },
+			{
+				message: { role: "user" },
+				parts: [
+					{ type: "text", text: "Build a login page" },
+					{ type: "text", text: "with dark mode" },
+				],
+			},
+		);
+
+		expect(mockController.start).toHaveBeenCalledWith(
+			"Build a login page\nwith dark mode",
+			true,
+		);
 	});
 });

@@ -1,54 +1,72 @@
 /**
- * Automatic event handler — no commands needed.
- * Intercepts regular user messages and triggers the full mission pipeline automatically.
+ * Automatic message handler — no commands needed.
+ * Uses the OpenCode plugin SDK's `chat.message` hook to intercept new user messages
+ * and trigger the full mission pipeline automatically.
+ *
+ * BUG FIX (v2.5.0): Previously used the `event` hook listening for `message.created`,
+ * which does not exist in OpenCode 1.17.x+. The pipeline never fired. Now uses
+ * `chat.message` which is the SDK's dedicated hook for new user messages.
  */
 import type { MissionController } from "./mission-controller.js";
 
-const VERSION = "2.4.0";
+const VERSION = "2.5.0";
 
-export function createEventHandler(controller: MissionController) {
-	return async (event: any) => {
-		// OpenCode event format varies between versions. Try both conventions.
-		const evtType: string | undefined = event?.type;
-		const isMessageEvent =
-			evtType === "message.created" ||
-			evtType === "message_create" ||
-			evtType === "MESSAGE_CREATED" ||
-			evtType === "MESSAGE_CREATE";
+/**
+ * Create a chat.message hook handler.
+ *
+ * The OpenCode plugin SDK calls this hook when a new user message is received,
+ * providing the message and its parts directly — no event type guessing needed.
+ *
+ * @param input  - { sessionID, agent?, model?, messageID? }
+ * @param output - { message: UserMessage, parts: Part[] }
+ */
+export function createChatMessageHandler(controller: MissionController) {
+	return async (
+		_input: {
+			sessionID: string;
+			agent?: string;
+			model?: { providerID: string; modelID: string };
+			messageID?: string;
+		},
+		output: {
+			message: { role: string };
+			parts: Array<{ type: string; text?: string }>;
+		},
+	) => {
+		// Extract user text from the message parts
+		const text = output.parts
+			.filter((p) => p.type === "text" && p.text)
+			.map((p) => p.text!)
+			.join("\n");
 
-		if (isMessageEvent) {
-			const text: string = event.data?.text ?? event.data?.content ?? "";
+		if (!text) return;
 
-			// /btw sideline question — fire-and-forget, never a task request
-			if (text.trim().toLowerCase().startsWith("/btw ") || text.trim().toLowerCase().startsWith("btw ")) {
-				const question = text.replace(/^\/(btw)\s+|^btw\s+/i, "").trim();
-				if (question) {
-					try {
-						controller.spawnSideline(question);
-					} catch (err) {
-						console.error(
-							`[opencode-orchestrator v${VERSION}] Sideline question failed:`,
-							err,
-						);
-					}
-				}
-				return event;
-			}
-
-			if (text && !shouldIgnore(text) && looksLikeTaskRequest(text)) {
+		// /btw sideline question — fire-and-forget, never a task request
+		if (text.trim().toLowerCase().startsWith("/btw ") || text.trim().toLowerCase().startsWith("btw ")) {
+			const question = text.replace(/^\/(btw)\s+|^btw\s+/i, "").trim();
+			if (question) {
 				try {
-					await controller.start(text, true); // always automatic
+					controller.spawnSideline(question);
 				} catch (err) {
 					console.error(
-						`[opencode-orchestrator v${VERSION}] Mission start failed:`,
+						`[opencode-orchestrator v${VERSION}] Sideline question failed:`,
 						err,
 					);
 				}
 			}
-			return event;
+			return;
 		}
 
-		return event;
+		if (!shouldIgnore(text) && looksLikeTaskRequest(text)) {
+			try {
+				await controller.start(text, true); // always automatic
+			} catch (err) {
+				console.error(
+					`[opencode-orchestrator v${VERSION}] Mission start failed:`,
+					err,
+				);
+			}
+		}
 	};
 }
 

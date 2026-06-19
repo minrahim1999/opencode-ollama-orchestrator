@@ -2,7 +2,7 @@ import type { Plugin } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
 import { AGENTS } from "./agents/index.js";
 import { createConfigHandler } from "./core/config-handler.js";
-import { createEventHandler } from "./core/event-handler.js";
+import { createChatMessageHandler } from "./core/event-handler.js";
 import { MissionController } from "./core/mission-controller.js";
 import { createDelegateTaskTool } from "./tools/delegate-task.js";
 import { Logger } from "./utils/logger.js";
@@ -61,7 +61,7 @@ const plugin: Plugin = async (input) => {
 
 	return {
 		config: createConfigHandler({ agents: AGENTS }),
-		event: createEventHandler(controller),
+		"chat.message": createChatMessageHandler(controller),
 		tool: {
 			delegate_task: createDelegateTaskTool({ client, directory, sessions }),
 			abort_mission: tool({
