@@ -81,7 +81,7 @@ const plugin: Plugin = async (input) => {
 			delegate_task: createDelegateTaskTool({ client, directory, sessions }),
 			start_mission: tool({
 				description:
-					"Start a multi-agent mission pipeline. The architect will create a plan, engineers will execute tasks in parallel, and the auditor will verify critical-path work. Call this AFTER the user confirms via the question tool.",
+					"Start a multi-agent mission pipeline. The architect will create a plan, engineers will execute tasks in parallel, and the auditor will verify critical-path work. Call this AFTER the user confirms via the question tool. Returns immediately — the mission runs in the background.",
 				args: {
 					description: tool.schema
 						.string()
@@ -90,12 +90,21 @@ const plugin: Plugin = async (input) => {
 						),
 				},
 				execute: async (args: { description: string }) => {
-					try {
-						await controller.start(args.description, true);
-						return `Mission started: ${args.description.slice(0, 80)}`;
-					} catch (err) {
-						return `Mission start failed: ${String(err).slice(0, 200)}`;
-					}
+					// Fire-and-forget: the pipeline runs in the background.
+					// We do NOT await it because the pipeline can take 10+ minutes
+					// (planning, execution, audit) and the tool call would timeout.
+					// The strategist gets a toast notification when the mission completes.
+					controller.start(args.description, true).catch((err) => {
+						Logger.log(
+							"error",
+							"start_mission",
+							`Mission failed: ${String(err).slice(0, 200)}`,
+							{
+								description: args.description.slice(0, 80),
+							},
+						);
+					});
+					return `Mission started in background: ${args.description.slice(0, 80)}. You will be notified when it completes.`;
 				},
 			}),
 			abort_mission: tool({

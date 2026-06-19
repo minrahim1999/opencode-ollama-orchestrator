@@ -12,7 +12,7 @@
  */
 import type { MissionController } from "./mission-controller.js";
 
-const VERSION = "2.5.1";
+const VERSION = "2.5.2";
 
 /**
  * Create a chat.message hook handler.
