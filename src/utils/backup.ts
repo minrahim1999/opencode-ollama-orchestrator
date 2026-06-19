@@ -94,7 +94,12 @@ export function createBackup(
 		try {
 			execFileSync(
 				"git",
-				["commit", "--allow-empty", "-m", `opencode-backup:${missionSlug}:${timestamp}`],
+				[
+					"commit",
+					"--allow-empty",
+					"-m",
+					`opencode-backup:${missionSlug}:${timestamp}`,
+				],
 				{ cwd: directory, stdio: "pipe" },
 			);
 			const hash = execFileSync("git", ["rev-parse", "HEAD"], {
@@ -192,7 +197,10 @@ export function revertBackup(directory: string, backup: BackupResult): boolean {
 				if (SKIP_NAMES.has(entry.name)) continue;
 				if (!snapshotNames.has(entry.name)) {
 					try {
-						rmSync(join(directory, entry.name), { recursive: true, force: true });
+						rmSync(join(directory, entry.name), {
+							recursive: true,
+							force: true,
+						});
 					} catch {
 						// Ignore deletion errors
 					}

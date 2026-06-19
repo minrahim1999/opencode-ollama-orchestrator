@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { extractEvidence, validateWrite, injectGuardInstructions } from "../src/core/hallucination-guard.js";
+import {
+	extractEvidence,
+	injectGuardInstructions,
+	validateWrite,
+} from "../src/core/hallucination-guard.js";
 
 describe("HallucinationGuard", () => {
 	const tmpDir = "/tmp/hg-test";
 
 	describe("extractEvidence", () => {
 		it("extracts cited files", () => {
-			const text = "Changed the auth logic in src/auth.ts and also updated tests in test/auth.test.ts";
+			const text =
+				"Changed the auth logic in src/auth.ts and also updated tests in test/auth.test.ts";
 			const ev = extractEvidence(text);
 			expect(ev.claimedFiles).toContain("src/auth.ts");
 			expect(ev.claimedFiles).toContain("test/auth.test.ts");
@@ -42,7 +47,9 @@ Confidence: 95%`;
 			const text = `Changed stuff in src/auth.ts. Confidence: 95%`;
 			const result = validateWrite(tmpDir, text, ["src/auth.ts"], 0.75);
 			expect(result.approved).toBe(false);
-			expect(result.violations.some((v) => v.includes("Missing mandatory"))).toBe(true);
+			expect(
+				result.violations.some((v) => v.includes("Missing mandatory")),
+			).toBe(true);
 		});
 
 		it("flags files outside scope that don't exist", () => {
@@ -60,7 +67,9 @@ Confidence: 95%`;
 		it("allows scope files even if not on disk", () => {
 			const text = `Will create src/new.ts. Evidence: new module. Confidence: 90%`;
 			const result = validateWrite(tmpDir, text, ["src/new.ts"], 0.75);
-			expect(result.violations.some((v) => v.includes("not found"))).toBe(false);
+			expect(result.violations.some((v) => v.includes("not found"))).toBe(
+				false,
+			);
 		});
 	});
 

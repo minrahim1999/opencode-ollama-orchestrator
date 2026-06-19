@@ -13,48 +13,56 @@ import { isAbsolute, join, resolve } from "node:path";
 import { Logger } from "../utils/logger.js";
 
 export interface WriteEvidence {
-  claimedFiles: string[];
-  claimedChanges: string;
-  confidenceEstimate: number; // agent self-assessed
+	claimedFiles: string[];
+	claimedChanges: string;
+	confidenceEstimate: number; // agent self-assessed
 }
 
 export interface GuardResult {
-  approved: boolean;
-  confidence: number;
-  violations: string[];
-  recommendation: "proceed" | "revise" | "escalate" | "abort";
+	approved: boolean;
+	confidence: number;
+	violations: string[];
+	recommendation: "proceed" | "revise" | "escalate" | "abort";
 }
 
 /** Extract evidence blocks from agent response text */
 export function extractEvidence(responseText: string): WriteEvidence {
-  const files = new Set<string>();
+	const files = new Set<string>();
 
-  // Match "(see src/foo.ts)" , "in src/foo.ts" , "from src/foo.ts"
-  const filePattern = /(?:see|in|from|file|path)\s+[`"']?([^`'"'\n]+?\.[a-zA-Z0-9]+)[`"']?/gi;
-  let m: RegExpExecArray | null;
-  while ((m = filePattern.exec(responseText)) !== null) {
-    files.add(m[1].trim());
-  }
+	// Match "(see src/foo.ts)" , "in src/foo.ts" , "from src/foo.ts"
+	const filePattern =
+		/(?:see|in|from|file|path)\s+[`"']?([^`'"'\n]+?\.[a-zA-Z0-9]+)[`"']?/gi;
+	let m: RegExpExecArray | null;
+	m = filePattern.exec(responseText);
+	while (m !== null) {
+		files.add(m[1].trim());
+		m = filePattern.exec(responseText);
+	}
 
-  // Also catch standalone file paths (e.g. "src/foo.ts", "./config.json", "test/auth.test.ts")
-  const standalonePattern = /(?:^|\s)([~.]?[\w\-/]*(?:[\w\-]+\.)+[a-zA-Z0-9]+)(?:\s|$|[,;])/gi;
-  let sm: RegExpExecArray | null;
-  while ((sm = standalonePattern.exec(responseText)) !== null) {
-    files.add(sm[1].trim());
-  }
+	// Also catch standalone file paths (e.g. "src/foo.ts", "./config.json", "test/auth.test.ts")
+	const standalonePattern =
+		/(?:^|\s)([~.]?[\w\-/]*(?:[\w-]+\.)+[a-zA-Z0-9]+)(?:\s|$|[,;])/gi;
+	let sm: RegExpExecArray | null;
+	sm = standalonePattern.exec(responseText);
+	while (sm !== null) {
+		files.add(sm[1].trim());
+		sm = standalonePattern.exec(responseText);
+	}
 
-  // Match Evidence: ... markers
-  const evidenceMatch = responseText.match(/Evidence:\s*([^\n]+)/i);
+	// Match Evidence: ... markers
+	const evidenceMatch = responseText.match(/Evidence:\s*([^\n]+)/i);
 
-  // Confidence: N% or Confidence: 0.X
-  const confMatch = responseText.match(/Confidence:\s*(\d+(?:\.\d+)?)\s*%?/i);
-  const confidenceEstimate = confMatch ? parseFloat(confMatch[1]) / (confMatch[0].includes("%") ? 100 : 1) : 0.5;
+	// Confidence: N% or Confidence: 0.X
+	const confMatch = responseText.match(/Confidence:\s*(\d+(?:\.\d+)?)\s*%?/i);
+	const confidenceEstimate = confMatch
+		? parseFloat(confMatch[1]) / (confMatch[0].includes("%") ? 100 : 1)
+		: 0.5;
 
-  return {
-    claimedFiles: Array.from(files),
-    claimedChanges: evidenceMatch?.[1]?.trim() ?? "(none stated)",
-    confidenceEstimate: Math.min(1, Math.max(0, confidenceEstimate)),
-  };
+	return {
+		claimedFiles: Array.from(files),
+		claimedChanges: evidenceMatch?.[1]?.trim() ?? "(none stated)",
+		confidenceEstimate: Math.min(1, Math.max(0, confidenceEstimate)),
+	};
 }
 
 /**
@@ -65,88 +73,104 @@ export function extractEvidence(responseText: string): WriteEvidence {
  * @param threshold   Minimum confidence (0.0–1.0)
  */
 export function validateWrite(
-  workingDir: string,
-  response: string,
-  scopeFiles: string[],
-  threshold: number
+	workingDir: string,
+	response: string,
+	scopeFiles: string[],
+	threshold: number,
 ): GuardResult {
-  const evidence = extractEvidence(response);
-  const violations: string[] = [];
+	const evidence = extractEvidence(response);
+	const violations: string[] = [];
 
-  // 1. At least one cited file
-  if (evidence.claimedFiles.length === 0) {
-    violations.push("No files cited in response. Agent must reference affected files.");
-  }
+	// 1. At least one cited file
+	if (evidence.claimedFiles.length === 0) {
+		violations.push(
+			"No files cited in response. Agent must reference affected files.",
+		);
+	}
 
-  // 2. Scope check — claimed files must be in plan or exist within workingDir
-  for (const f of evidence.claimedFiles) {
-    // Reject absolute paths outside workingDir (security: prevent /etc/passwd bypass)
-    if (isAbsolute(f)) {
-      const resolved = resolve(f);
-      const resolvedWorking = resolve(workingDir);
-      if (!resolved.startsWith(resolvedWorking)) {
-        violations.push(`File '${f}' is an absolute path outside the project directory. Possible hallucination or security violation.`);
-        continue;
-      }
-    }
-    const inScope = scopeFiles.some((s) => s.endsWith(f) || f.endsWith(s) || s === f);
-    const exists = existsSync(join(workingDir, f));
-    if (!inScope && !exists) {
-      violations.push(`File '${f}' not found and not in planned scope. Possible hallucination.`);
-    }
-  }
+	// 2. Scope check — claimed files must be in plan or exist within workingDir
+	for (const f of evidence.claimedFiles) {
+		// Reject absolute paths outside workingDir (security: prevent /etc/passwd bypass)
+		if (isAbsolute(f)) {
+			const resolved = resolve(f);
+			const resolvedWorking = resolve(workingDir);
+			if (!resolved.startsWith(resolvedWorking)) {
+				violations.push(
+					`File '${f}' is an absolute path outside the project directory. Possible hallucination or security violation.`,
+				);
+				continue;
+			}
+		}
+		const inScope = scopeFiles.some(
+			(s) => s.endsWith(f) || f.endsWith(s) || s === f,
+		);
+		const exists = existsSync(join(workingDir, f));
+		if (!inScope && !exists) {
+			violations.push(
+				`File '${f}' not found and not in planned scope. Possible hallucination.`,
+			);
+		}
+	}
 
-  // 3. Self-confidence check
-  if (evidence.confidenceEstimate < threshold * 0.8) {
-    violations.push(`Self-reported confidence (${(evidence.confidenceEstimate * 100).toFixed(0)}%) is too low (threshold ${(threshold * 100).toFixed(0)}%).`);
-  }
+	// 3. Self-confidence check
+	if (evidence.confidenceEstimate < threshold * 0.8) {
+		violations.push(
+			`Self-reported confidence (${(evidence.confidenceEstimate * 100).toFixed(0)}%) is too low (threshold ${(threshold * 100).toFixed(0)}%).`,
+		);
+	}
 
-  // 4. Evidence must exist in response
-  if (!response.includes("Evidence:") && !response.includes("evidence:")) {
-    violations.push("Missing mandatory 'Evidence:' line. Required in fast mode.");
-  }
+	// 4. Evidence must exist in response
+	if (!response.includes("Evidence:") && !response.includes("evidence:")) {
+		violations.push(
+			"Missing mandatory 'Evidence:' line. Required in fast mode.",
+		);
+	}
 
-  // Composite score
-  const fileScore = evidence.claimedFiles.length > 0 ? 0.3 : 0;
-  const scopeScore = violations.filter((v) => v.includes("not found")).length === 0 ? 0.3 : 0;
-  const evidenceScore = response.includes("Evidence:") ? 0.2 : 0;
-  const confidenceScore = evidence.confidenceEstimate * 0.2;
+	// Composite score
+	const fileScore = evidence.claimedFiles.length > 0 ? 0.3 : 0;
+	const scopeScore =
+		violations.filter((v) => v.includes("not found")).length === 0 ? 0.3 : 0;
+	const evidenceScore = response.includes("Evidence:") ? 0.2 : 0;
+	const confidenceScore = evidence.confidenceEstimate * 0.2;
 
-  const confidence = fileScore + scopeScore + evidenceScore + confidenceScore;
+	const confidence = fileScore + scopeScore + evidenceScore + confidenceScore;
 
-  let recommendation: GuardResult["recommendation"];
-  if (confidence >= threshold && violations.length === 0) {
-    recommendation = "proceed";
-  } else if (confidence >= threshold * 0.6) {
-    recommendation = "revise";
-  } else if (confidence >= threshold * 0.3) {
-    recommendation = "escalate";
-  } else {
-    recommendation = "abort";
-  }
+	let recommendation: GuardResult["recommendation"];
+	if (confidence >= threshold && violations.length === 0) {
+		recommendation = "proceed";
+	} else if (confidence >= threshold * 0.6) {
+		recommendation = "revise";
+	} else if (confidence >= threshold * 0.3) {
+		recommendation = "escalate";
+	} else {
+		recommendation = "abort";
+	}
 
-  const result: GuardResult = {
-    approved: recommendation === "proceed",
-    confidence: Math.round(confidence * 100) / 100,
-    violations,
-    recommendation,
-  };
+	const result: GuardResult = {
+		approved: recommendation === "proceed",
+		confidence: Math.round(confidence * 100) / 100,
+		violations,
+		recommendation,
+	};
 
-  Logger.log(
-    result.approved ? "info" : "warn",
-    "hallucination-guard",
-    `Write audit: ${result.approved ? "approved" : result.recommendation} (confidence=${confidence.toFixed(2)})`,
-    { claimedFiles: evidence.claimedFiles, violations }
-  );
+	Logger.log(
+		result.approved ? "info" : "warn",
+		"hallucination-guard",
+		`Write audit: ${result.approved ? "approved" : result.recommendation} (confidence=${confidence.toFixed(2)})`,
+		{ claimedFiles: evidence.claimedFiles, violations },
+	);
 
-  return result;
+	return result;
 }
 
 /** Enrich agent prompt with hallucination guard instructions */
-export function injectGuardInstructions(basePrompt: string, requireEvidence: boolean): string {
-  if (!requireEvidence) return basePrompt;
+export function injectGuardInstructions(
+	basePrompt: string,
+	requireEvidence: boolean,
+): string {
+	if (!requireEvidence) return basePrompt;
 
-  const guardInstructions = `
+	const guardInstructions = `
 ┌───────────────────────────────────────────────
 │  HALLUCINATION GUARD (MANDATORY IN FAST MODE)
 ├───────────────────────────────────────────────
@@ -158,5 +182,5 @@ export function injectGuardInstructions(basePrompt: string, requireEvidence: boo
 └───────────────────────────────────────────────
 `.trim();
 
-  return `${guardInstructions}\n\n${basePrompt}`;
+	return `${guardInstructions}\n\n${basePrompt}`;
 }

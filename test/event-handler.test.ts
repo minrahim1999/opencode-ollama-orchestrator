@@ -174,7 +174,9 @@ describe("createChatMessageHandler", () => {
 			{ sessionID: "s1", agent: "strategist" },
 			{
 				message: { role: "user" },
-				parts: [{ type: "text", text: "Build a user authentication module with JWT" }],
+				parts: [
+					{ type: "text", text: "Build a user authentication module with JWT" },
+				],
 			},
 		);
 
@@ -217,7 +219,9 @@ describe("createChatMessageHandler", () => {
 			},
 		);
 
-		expect(mockController.spawnSideline).toHaveBeenCalledWith("what is OAuth2 PKCE?");
+		expect(mockController.spawnSideline).toHaveBeenCalledWith(
+			"what is OAuth2 PKCE?",
+		);
 		expect(mockController.start).not.toHaveBeenCalled();
 	});
 

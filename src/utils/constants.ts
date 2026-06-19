@@ -36,7 +36,12 @@ export function loadOrchestratorConfig(directory: string): {
 	doxEnabled: boolean;
 	mode: import("../types.js").OrchestratorMode;
 	fastMode: import("../types.js").FastModeConfig | undefined;
-	notify?: { ntfyTopic?: string; webhookUrl?: string; minLevel?: string; headers?: Record<string, string> };
+	notify?: {
+		ntfyTopic?: string;
+		webhookUrl?: string;
+		minLevel?: string;
+		headers?: Record<string, string>;
+	};
 	rateLimitCapacity?: number;
 	rateLimitRefill?: number;
 } {
@@ -75,14 +80,21 @@ export function loadOrchestratorConfig(directory: string): {
 					spark: pluginOpts.agents.spark ?? DEFAULT_NAMES.spark,
 				};
 			}
-			if (pluginOpts?.maxParallelWorkers !== undefined) opts.maxParallelWorkers = pluginOpts.maxParallelWorkers;
-			if (pluginOpts?.maxRetries !== undefined) opts.maxRetries = pluginOpts.maxRetries;
+			if (pluginOpts?.maxParallelWorkers !== undefined)
+				opts.maxParallelWorkers = pluginOpts.maxParallelWorkers;
+			if (pluginOpts?.maxRetries !== undefined)
+				opts.maxRetries = pluginOpts.maxRetries;
 			if (pluginOpts?.verbose !== undefined) opts.verbose = pluginOpts.verbose;
-			if (pluginOpts?.requireApproval !== undefined) opts.requireApproval = pluginOpts.requireApproval;
-			if (pluginOpts?.maxSubagentDepth !== undefined) opts.maxSubagentDepth = pluginOpts.maxSubagentDepth;
-			if (pluginOpts?.doxAutoInit !== undefined) opts.doxAutoInit = pluginOpts.doxAutoInit;
-			if (pluginOpts?.doxAutoCloseout !== undefined) opts.doxAutoCloseout = pluginOpts.doxAutoCloseout;
-			if (pluginOpts?.doxEnabled !== undefined) opts.doxEnabled = pluginOpts.doxEnabled;
+			if (pluginOpts?.requireApproval !== undefined)
+				opts.requireApproval = pluginOpts.requireApproval;
+			if (pluginOpts?.maxSubagentDepth !== undefined)
+				opts.maxSubagentDepth = pluginOpts.maxSubagentDepth;
+			if (pluginOpts?.doxAutoInit !== undefined)
+				opts.doxAutoInit = pluginOpts.doxAutoInit;
+			if (pluginOpts?.doxAutoCloseout !== undefined)
+				opts.doxAutoCloseout = pluginOpts.doxAutoCloseout;
+			if (pluginOpts?.doxEnabled !== undefined)
+				opts.doxEnabled = pluginOpts.doxEnabled;
 			if (pluginOpts?.fastMode) {
 				opts.mode = pluginOpts.fastMode.mode ?? "slow";
 				opts.fastMode = pluginOpts.fastMode;
@@ -123,7 +135,9 @@ export function resolveAgentAlias(agent: string, names: ResolvedNames): string {
 
 	const role =
 		aliases[agent.toLowerCase()] ??
-		(Object.keys(names).includes(agent) ? (agent as keyof ResolvedNames) : null);
+		(Object.keys(names).includes(agent)
+			? (agent as keyof ResolvedNames)
+			: null);
 	if (!role) return agent; // Pass through as-is if unrecognized
 	return names[role];
 }

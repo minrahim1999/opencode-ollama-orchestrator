@@ -1,14 +1,15 @@
 /** @vitest-environment node */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { rmSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
+
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionManager } from "../src/core/session-manager.js";
 import { clearConfigCache } from "../src/utils/config-loader.js";
 
 // Mock node:fs partially — keep real fs but override readFileSync for config loading
 vi.mock("node:fs", async (importOriginal) => {
-	const actual = await importOriginal() as any;
+	const actual = (await importOriginal()) as any;
 	return {
 		...actual,
 		readFileSync: vi.fn(),
@@ -26,7 +27,10 @@ describe("SessionManager", () => {
 
 	beforeEach(() => {
 		clearConfigCache();
-		tmpDir = join(tmpdir(), `sm-test-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+		tmpDir = join(
+			tmpdir(),
+			`sm-test-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+		);
 		mkdirSync(tmpDir, { recursive: true });
 
 		sessions = new Map();
@@ -43,7 +47,9 @@ describe("SessionManager", () => {
 		};
 
 		(readFileSync as any).mockReturnValue("{}");
-		(statSync as any).mockImplementation(() => { throw new Error("ENOENT"); });
+		(statSync as any).mockImplementation(() => {
+			throw new Error("ENOENT");
+		});
 
 		sm = new SessionManager({
 			client: mockClient,
@@ -59,10 +65,14 @@ describe("SessionManager", () => {
 
 	describe("createSession", () => {
 		it("creates a session without model/agent on create (v2.5.0 fix)", async () => {
-			(statSync as any).mockImplementation(() => { throw new Error("ENOENT"); });
-			(readFileSync as any).mockReturnValue(JSON.stringify({
-				agent: { engineer: { model: "ollama/kimi-k2.7-code" } },
-			}));
+			(statSync as any).mockImplementation(() => {
+				throw new Error("ENOENT");
+			});
+			(readFileSync as any).mockReturnValue(
+				JSON.stringify({
+					agent: { engineer: { model: "ollama/kimi-k2.7-code" } },
+				}),
+			);
 
 			const result = await sm.createSession("engineer", "Test task");
 			expect(result.id).toBe("session-123");
@@ -75,10 +85,14 @@ describe("SessionManager", () => {
 		});
 
 		it("passes model+agent on promptSession (v2.5.0 fix)", async () => {
-			(statSync as any).mockImplementation(() => { throw new Error("ENOENT"); });
-			(readFileSync as any).mockReturnValue(JSON.stringify({
-				agent: { engineer: { model: "ollama/kimi-k2.7-code" } },
-			}));
+			(statSync as any).mockImplementation(() => {
+				throw new Error("ENOENT");
+			});
+			(readFileSync as any).mockReturnValue(
+				JSON.stringify({
+					agent: { engineer: { model: "ollama/kimi-k2.7-code" } },
+				}),
+			);
 
 			await sm.createSession("engineer", "Test task");
 			await sm.promptSession("session-123", "engineer", "Do the work");
@@ -93,9 +107,11 @@ describe("SessionManager", () => {
 		});
 
 		it("falls back to global model when agent has no model", async () => {
-			(readFileSync as any).mockReturnValue(JSON.stringify({
-				model: "ollama/deepseek-v4-flash",
-			}));
+			(readFileSync as any).mockReturnValue(
+				JSON.stringify({
+					model: "ollama/deepseek-v4-flash",
+				}),
+			);
 
 			const result = await sm.createSession("engineer", "Test task");
 			expect(result.id).toBe("session-123");
@@ -113,11 +129,15 @@ describe("SessionManager", () => {
 		});
 
 		it("throws when both primary and fallback fail", async () => {
-			(readFileSync as any).mockReturnValue(JSON.stringify({
-				agent: { engineer: { model: "ollama/broken-model" } },
-				model: "ollama/also-broken",
-			}));
-			mockClient.v2.session.create.mockRejectedValue(new Error("model not found"));
+			(readFileSync as any).mockReturnValue(
+				JSON.stringify({
+					agent: { engineer: { model: "ollama/broken-model" } },
+					model: "ollama/also-broken",
+				}),
+			);
+			mockClient.v2.session.create.mockRejectedValue(
+				new Error("model not found"),
+			);
 
 			await expect(sm.createSession("engineer", "Test task")).rejects.toThrow();
 		});
@@ -181,7 +201,9 @@ describe("SessionManager", () => {
 			await sm.createSession("engineer", "Test task");
 
 			// Make SDK status throw
-			mockClient.v2.session.status.mockRejectedValue(new Error("API unavailable"));
+			mockClient.v2.session.status.mockRejectedValue(
+				new Error("API unavailable"),
+			);
 
 			// Mark inactive via local map
 			setTimeout(() => {
@@ -228,14 +250,18 @@ describe("SessionManager", () => {
 
 	describe("circuit breaker", () => {
 		it("tracks model failures", async () => {
-			(readFileSync as any).mockReturnValue(JSON.stringify({
-				agent: { engineer: { model: "ollama/failing-model" } },
-			}));
+			(readFileSync as any).mockReturnValue(
+				JSON.stringify({
+					agent: { engineer: { model: "ollama/failing-model" } },
+				}),
+			);
 
 			// Fail 6 times — 5th failure opens circuit breaker on 6th call
 			mockClient.v2.session.create.mockRejectedValue(new Error("model down"));
 			for (let i = 0; i < 6; i++) {
-				try { await sm.createSession("engineer", "Test"); } catch {}
+				try {
+					await sm.createSession("engineer", "Test");
+				} catch {}
 			}
 
 			const failures = sm.getModelFailures();

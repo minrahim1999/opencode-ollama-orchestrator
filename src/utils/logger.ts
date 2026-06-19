@@ -2,7 +2,14 @@
  * Structured JSON logger for production observability.
  * Logs to both stderr (for TUI visibility) and a daily-rotated JSON file.
  */
-import { appendFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import {
+	appendFileSync,
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	rmSync,
+	statSync,
+} from "node:fs";
 import { join } from "node:path";
 
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal";

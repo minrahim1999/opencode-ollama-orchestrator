@@ -1,11 +1,12 @@
 /** @vitest-environment node */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, rmSync, writeFileSync, readdirSync } from "node:fs";
+
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MissionStore } from "../src/core/mission-store.js";
 import type { MissionCtx } from "../src/core/types.js";
-import { getMissionDirectory, slugify } from "../src/utils/paths.js";
+import { getMissionDirectory } from "../src/utils/paths.js";
 
 describe("MissionStore", () => {
 	let store: MissionStore;
@@ -13,7 +14,10 @@ describe("MissionStore", () => {
 	let tmpDir: string;
 
 	beforeEach(() => {
-		tmpDir = join(tmpdir(), `ms-test-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+		tmpDir = join(
+			tmpdir(),
+			`ms-test-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+		);
 		mkdirSync(tmpDir, { recursive: true });
 		missions = new Map();
 		store = new MissionStore({ directory: tmpDir, missions });
@@ -26,7 +30,8 @@ describe("MissionStore", () => {
 
 	function makeCtx(overrides?: Partial<MissionCtx>): MissionCtx {
 		const slug = overrides?.slug ?? "test-mission";
-		const missionDir = overrides?.missionDir ?? join(tmpDir, ".opencode", "missions", slug);
+		const missionDir =
+			overrides?.missionDir ?? join(tmpDir, ".opencode", "missions", slug);
 		return {
 			missionId: overrides?.missionId ?? `mission-${Date.now()}`,
 			slug,
@@ -55,25 +60,29 @@ describe("MissionStore", () => {
 				slug: "build-auth",
 				description: "Build auth system",
 			});
-			ctx.todos = [{
-				id: "TASK-001",
-				description: "Create login form",
-				agent: "engineer",
-				criticalPath: true,
-				phaseGate: false,
-				dependsOn: [],
-				acceptanceCriteria: ["Form renders"],
-				status: "completed",
-				phase: "Phase 1",
-			}] as any;
-			ctx.memory = [{
-				taskId: "TASK-001",
-				agent: "engineer",
-				summary: "Created login form",
-				filesChanged: ["src/login.tsx"],
-				issues: [],
-				timestamp: Date.now(),
-			}];
+			ctx.todos = [
+				{
+					id: "TASK-001",
+					description: "Create login form",
+					agent: "engineer",
+					criticalPath: true,
+					phaseGate: false,
+					dependsOn: [],
+					acceptanceCriteria: ["Form renders"],
+					status: "completed",
+					phase: "Phase 1",
+				},
+			] as any;
+			ctx.memory = [
+				{
+					taskId: "TASK-001",
+					agent: "engineer",
+					summary: "Created login form",
+					filesChanged: ["src/login.tsx"],
+					issues: [],
+					timestamp: Date.now(),
+				},
+			];
 
 			store.saveMissionState(ctx);
 
@@ -107,7 +116,10 @@ describe("MissionStore", () => {
 
 			// New store, new missions map
 			const newMissions = new Map<string, MissionCtx>();
-			const newStore = new MissionStore({ directory: tmpDir, missions: newMissions });
+			const newStore = new MissionStore({
+				directory: tmpDir,
+				missions: newMissions,
+			});
 			newStore.loadMissionsFromDisk();
 
 			expect(newMissions.size).toBe(1);
@@ -118,13 +130,24 @@ describe("MissionStore", () => {
 		});
 
 		it("restores hold and retrying missions", () => {
-			const ctx1 = makeCtx({ slug: "hold-mission", missionId: "m-1", state: "hold" as any });
-			const ctx2 = makeCtx({ slug: "retry-mission", missionId: "m-2", state: "retrying" as any });
+			const ctx1 = makeCtx({
+				slug: "hold-mission",
+				missionId: "m-1",
+				state: "hold" as any,
+			});
+			const ctx2 = makeCtx({
+				slug: "retry-mission",
+				missionId: "m-2",
+				state: "retrying" as any,
+			});
 			store.saveMissionState(ctx1);
 			store.saveMissionState(ctx2);
 
 			const newMissions = new Map<string, MissionCtx>();
-			const newStore = new MissionStore({ directory: tmpDir, missions: newMissions });
+			const newStore = new MissionStore({
+				directory: tmpDir,
+				missions: newMissions,
+			});
 			newStore.loadMissionsFromDisk();
 
 			expect(newMissions.size).toBe(2);
@@ -136,7 +159,10 @@ describe("MissionStore", () => {
 			store.saveMissionState(ctx);
 
 			const newMissions = new Map<string, MissionCtx>();
-			const newStore = new MissionStore({ directory: tmpDir, missions: newMissions });
+			const newStore = new MissionStore({
+				directory: tmpDir,
+				missions: newMissions,
+			});
 			newStore.loadMissionsFromDisk();
 
 			expect(newMissions.size).toBe(0);
@@ -149,7 +175,10 @@ describe("MissionStore", () => {
 			writeFileSync(join(missionDir, "state.json"), "not valid json{{{");
 
 			const newMissions = new Map<string, MissionCtx>();
-			const newStore = new MissionStore({ directory: tmpDir, missions: newMissions });
+			const newStore = new MissionStore({
+				directory: tmpDir,
+				missions: newMissions,
+			});
 
 			// Should not throw
 			newStore.loadMissionsFromDisk();
@@ -159,7 +188,10 @@ describe("MissionStore", () => {
 
 		it("handles empty missions directory", () => {
 			const newMissions = new Map<string, MissionCtx>();
-			const newStore = new MissionStore({ directory: tmpDir, missions: newMissions });
+			const newStore = new MissionStore({
+				directory: tmpDir,
+				missions: newMissions,
+			});
 			newStore.loadMissionsFromDisk();
 			expect(newMissions.size).toBe(0);
 			newStore.stopCleanup();
@@ -168,7 +200,10 @@ describe("MissionStore", () => {
 		it("handles missing missions directory", () => {
 			const noDir = join(tmpDir, "no-missions-dir");
 			const newMissions = new Map<string, MissionCtx>();
-			const newStore = new MissionStore({ directory: noDir, missions: newMissions });
+			const newStore = new MissionStore({
+				directory: noDir,
+				missions: newMissions,
+			});
 			newStore.loadMissionsFromDisk();
 			expect(newMissions.size).toBe(0);
 			newStore.stopCleanup();
@@ -183,7 +218,7 @@ describe("MissionStore", () => {
 			writeFileSync(join(oldDir, "state.json"), "{}");
 
 			// Backdate the directory mtime to 8 days ago
-			const oldTime = (Date.now() / 1000) - (8 * 24 * 60 * 60);
+			const oldTime = Date.now() / 1000 - 8 * 24 * 60 * 60;
 			require("node:fs").utimesSync(oldDir, oldTime, oldTime);
 
 			// Run cleanup explicitly
@@ -201,7 +236,10 @@ describe("MissionStore", () => {
 			writeFileSync(join(newDir, "state.json"), "{}");
 
 			store.stopCleanup();
-			const newStore = new MissionStore({ directory: tmpDir, missions: new Map() });
+			const newStore = new MissionStore({
+				directory: tmpDir,
+				missions: new Map(),
+			});
 			newStore.stopCleanup();
 
 			expect(existsSync(newDir)).toBe(true);
@@ -217,7 +255,11 @@ describe("MissionStore", () => {
 
 	describe("startMemoryPurge", () => {
 		it("removes completed missions older than 1 hour from the map", () => {
-			const ctx = makeCtx({ slug: "old-completed", state: "completed", completedAt: Date.now() - (2 * 60 * 60 * 1000) });
+			const ctx = makeCtx({
+				slug: "old-completed",
+				state: "completed",
+				completedAt: Date.now() - 2 * 60 * 60 * 1000,
+			});
 			missions.set(ctx.missionId, ctx);
 
 			// Trigger purge explicitly
@@ -230,7 +272,11 @@ describe("MissionStore", () => {
 		});
 
 		it("keeps recently completed missions", () => {
-			const ctx = makeCtx({ slug: "recent-completed", state: "completed", completedAt: Date.now() - (30 * 60 * 1000) });
+			const ctx = makeCtx({
+				slug: "recent-completed",
+				state: "completed",
+				completedAt: Date.now() - 30 * 60 * 1000,
+			});
 			missions.set(ctx.missionId, ctx);
 
 			// Initial purge should keep it (< 1hr old)

@@ -8,10 +8,7 @@
  * and session completion polling.
  */
 
-import {
-	existsSync,
-	readFileSync,
-} from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { writeFileAtomicSync } from "../utils/atomic.js";
 import { createBackup, deleteBackup, revertBackup } from "../utils/backup.js";
@@ -362,9 +359,14 @@ export class MissionController {
 			try {
 				const session = await this.createSession(agent, sessionTitle);
 				await this.promptSession(session.id, agent, question);
-				Logger.log("info", "spark", `Sideline session spawned: ${sessionTitle}`, {
-					question,
-				});
+				Logger.log(
+					"info",
+					"spark",
+					`Sideline session spawned: ${sessionTitle}`,
+					{
+						question,
+					},
+				);
 				// Best-effort toast
 				try {
 					const client = this.deps.client;
@@ -382,9 +384,14 @@ export class MissionController {
 					// Toast is cosmetic
 				}
 			} catch (err) {
-				Logger.log("error", "spark", `Sideline session failed: ${String(err)}`, {
-					question,
-				});
+				Logger.log(
+					"error",
+					"spark",
+					`Sideline session failed: ${String(err)}`,
+					{
+						question,
+					},
+				);
 			}
 		})();
 	}
@@ -926,15 +933,15 @@ export class MissionController {
 					);
 					ctx.todos[index] = { ...todo, status: "failed" };
 					this.addTaskMemory(
-							ctx,
-							todo.id,
-							resolvedAgent,
-							"Audit failed — acceptance criteria not met",
-							[],
-							[`Failed after ${maxRetries} retries`],
-						);
-						this.saveMissionState(ctx); // Persist memory even on failure
-						this.emit(ctx, `${todo.id} audit FAILED permanently`, auto);
+						ctx,
+						todo.id,
+						resolvedAgent,
+						"Audit failed — acceptance criteria not met",
+						[],
+						[`Failed after ${maxRetries} retries`],
+					);
+					this.saveMissionState(ctx); // Persist memory even on failure
+					this.emit(ctx, `${todo.id} audit FAILED permanently`, auto);
 					return;
 				}
 			}
@@ -1033,10 +1040,17 @@ export class MissionController {
 		ctx: MissionCtx,
 	): Promise<boolean> {
 		const auditResultRelPath = join(
-			".opencode", "plans", ctx.slug, `audit-${todo.id}.json`,
+			".opencode",
+			"plans",
+			ctx.slug,
+			`audit-${todo.id}.json`,
 		);
 		const auditResultAbsPath = join(
-			this.deps.directory, ".opencode", "plans", ctx.slug, `audit-${todo.id}.json`,
+			this.deps.directory,
+			".opencode",
+			"plans",
+			ctx.slug,
+			`audit-${todo.id}.json`,
 		);
 
 		const session = await this.createSession(
@@ -1135,11 +1149,7 @@ export class MissionController {
 		names: { specialist: string; auditor: string },
 		slug: string,
 	): string {
-		const todoPath = join(
-			".opencode",
-			"todo",
-			`${slug}.md`,
-		);
+		const todoPath = join(".opencode", "todo", `${slug}.md`);
 		return [
 			`Task: ${todo.id}`,
 			`Description: ${todo.description}`,

@@ -221,7 +221,13 @@ function buildAgentConfig(
 		prompt,
 		maxTokens: role === "spark" ? 2048 : 8192,
 		temperature:
-			role === "strategist" ? 0.3 : role === "architect" ? 0.8 : role === "spark" ? 0.3 : 0.2,
+			role === "strategist"
+				? 0.3
+				: role === "architect"
+					? 0.8
+					: role === "spark"
+						? 0.3
+						: 0.2,
 		tools: defaultTools(role),
 		permission: defaultPermission(role),
 		allowLoop: false,

@@ -6,16 +6,15 @@ export {
 	type AgentRole,
 	DEFAULT_AGENT_NAMES,
 } from "./names.js";
+export { SPARK_PROMPT } from "./spark.js";
 export { SPECIALIST_PROMPT } from "./specialist.js";
 export { STRATEGIST_PROMPT } from "./strategist.js";
-
-export { SPARK_PROMPT } from "./spark.js";
 
 import { ARCHITECT_PROMPT } from "./architect.js";
 import { AUDITOR_PROMPT } from "./auditor.js";
 import { ENGINEER_PROMPT } from "./engineer.js";
-import { SPECIALIST_PROMPT } from "./specialist.js";
 import { SPARK_PROMPT } from "./spark.js";
+import { SPECIALIST_PROMPT } from "./specialist.js";
 import { STRATEGIST_PROMPT } from "./strategist.js";
 
 export type AgentPrompts = {

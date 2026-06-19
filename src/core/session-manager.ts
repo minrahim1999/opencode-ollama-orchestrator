@@ -18,10 +18,7 @@
 import { existsSync } from "node:fs";
 import { loadUserConfig, parseModel } from "../utils/config-loader.js";
 import { Logger } from "../utils/logger.js";
-import {
-	createOllamaRateLimiter,
-	TokenBucket,
-} from "../utils/ratelimiter.js";
+import { createOllamaRateLimiter, TokenBucket } from "../utils/ratelimiter.js";
 import type { SessionInfo } from "./types.js";
 
 const POLL_INTERVAL_MS = 2000;
@@ -160,7 +157,11 @@ export class SessionManager {
 					}
 				}
 				// SDK loop completed without finding terminal state — return to avoid double timeout
-				Logger.log("warn", "session", `Session ${sessionId} SDK poll exhausted (${MAX_POLL_ATTEMPTS} attempts)`);
+				Logger.log(
+					"warn",
+					"session",
+					`Session ${sessionId} SDK poll exhausted (${MAX_POLL_ATTEMPTS} attempts)`,
+				);
 				return;
 			}
 		} catch {
@@ -266,7 +267,9 @@ export class SessionManager {
 				};
 				if (taskId) opts.parentID = taskId; // not technically parentID but harmless
 				Logger.log("info", "session", `createSession for ${agent}`, {
-					model: modelObj ? `${modelObj.providerID}/${modelObj.modelID}` : "default",
+					model: modelObj
+						? `${modelObj.providerID}/${modelObj.modelID}`
+						: "default",
 					primary: true,
 					note: "model will be set on prompt, not create",
 				});
@@ -303,10 +306,15 @@ export class SessionManager {
 				if (modelKey) this.modelFailures.set(modelKey, 0);
 			} catch (err) {
 				lastError = err as Error;
-				Logger.log("error", "session", `Fallback session creation also failed`, {
-					model: `${fallbackModelObj.providerID}/${fallbackModelObj.modelID}`,
-					error: (err as Error).message,
-				});
+				Logger.log(
+					"error",
+					"session",
+					`Fallback session creation also failed`,
+					{
+						model: `${fallbackModelObj.providerID}/${fallbackModelObj.modelID}`,
+						error: (err as Error).message,
+					},
+				);
 			}
 		}
 

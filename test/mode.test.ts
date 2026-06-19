@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { resolveModeConfig, SLOW_MODE_DEFAULTS, FAST_MODE_DEFAULTS, isFastTrackRequest } from "../src/core/mode.js";
+import { describe, expect, it } from "vitest";
+import { isFastTrackRequest, resolveModeConfig } from "../src/core/mode.js";
 
 describe("Mode resolution", () => {
 	it("returns slow defaults when no args given", () => {
@@ -34,7 +34,10 @@ describe("Mode resolution", () => {
 	});
 
 	it("merges user overrides on fast base", () => {
-		const cfg = resolveModeConfig("fast", { maxParallelWorkers: 2, confidenceThreshold: 0.9 });
+		const cfg = resolveModeConfig("fast", {
+			maxParallelWorkers: 2,
+			confidenceThreshold: 0.9,
+		});
 		expect(cfg.maxParallelWorkers).toBe(2);
 		expect(cfg.confidenceThreshold).toBe(0.9);
 		expect(cfg.mode).toBe("fast");

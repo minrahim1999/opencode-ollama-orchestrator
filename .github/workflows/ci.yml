@@ -26,7 +26,7 @@ jobs:
         run: npm ci
 
       - name: Lint check
-        run: npm run lint
+        run: npx biome check . --diagnostic-level=error
 
       - name: Type check
         run: npx tsc --noEmit

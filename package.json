@@ -1,67 +1,67 @@
 {
-  "name": "opencode-ollama-orchestrator",
-  "version": "2.5.0",
-  "description": "Multi-agent orchestrator for OpenCode. Provider-agnostic — uses whatever model is configured per agent. Automatic mission mode with per-project plan/todo scoping.",
-  "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
-  },
-  "files": [
-    "dist",
-    "test",
-    "vitest.config.ts",
-    "README.md",
-    "CHANGELOG.md",
-    "LICENSE",
-    "docs",
-    "examples"
-  ],
-  "keywords": [
-    "opencode-plugin",
-    "opencode",
-    "orchestrator",
-    "multi-agent",
-    "subagent"
-  ],
-  "license": "MIT",
-  "author": "muhaimin <muhaimin@example.com>",
-  "repository": {
-    "type": "git",
-    "url": "git+ssh://git@github.com/minrahim1999/opencode-ollama-orchestrator.git"
-  },
-  "bugs": {
-    "url": "https://github.com/minrahim1999/opencode-ollama-orchestrator/issues"
-  },
-  "homepage": "https://github.com/minrahim1999/opencode-ollama-orchestrator#readme",
-  "peerDependencies": {
-    "@opencode-ai/plugin": ">=1.17.0",
-    "@opencode-ai/sdk": ">=1.17.0"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^2.5.0",
-    "@opencode-ai/plugin": "^1.17.7",
-    "@opencode-ai/sdk": "^1.17.7",
-    "@types/node": "^22.19.21",
-    "@vitest/coverage-v8": "^4.1.9",
-    "typescript": "^5.9.3",
-    "vitest": "^4.1.9"
-  },
-  "scripts": {
-    "build": "tsc",
-    "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write .",
-    "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
-    "prepublishOnly": "npm run clean && npm run build"
-  },
-  "engines": {
-    "node": ">=20"
-  }
+	"name": "opencode-ollama-orchestrator",
+	"version": "2.5.0",
+	"description": "Multi-agent orchestrator for OpenCode. Provider-agnostic — uses whatever model is configured per agent. Automatic mission mode with per-project plan/todo scoping.",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		}
+	},
+	"files": [
+		"dist",
+		"test",
+		"vitest.config.ts",
+		"README.md",
+		"CHANGELOG.md",
+		"LICENSE",
+		"docs",
+		"examples"
+	],
+	"keywords": [
+		"opencode-plugin",
+		"opencode",
+		"orchestrator",
+		"multi-agent",
+		"subagent"
+	],
+	"license": "MIT",
+	"author": "muhaimin <muhaimin@example.com>",
+	"repository": {
+		"type": "git",
+		"url": "git+ssh://git@github.com/minrahim1999/opencode-ollama-orchestrator.git"
+	},
+	"bugs": {
+		"url": "https://github.com/minrahim1999/opencode-ollama-orchestrator/issues"
+	},
+	"homepage": "https://github.com/minrahim1999/opencode-ollama-orchestrator#readme",
+	"peerDependencies": {
+		"@opencode-ai/plugin": ">=1.17.0",
+		"@opencode-ai/sdk": ">=1.17.0"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.0",
+		"@opencode-ai/plugin": "^1.17.7",
+		"@opencode-ai/sdk": "^1.17.7",
+		"@types/node": "^22.19.21",
+		"@vitest/coverage-v8": "^4.1.9",
+		"typescript": "^5.9.3",
+		"vitest": "^4.1.9"
+	},
+	"scripts": {
+		"build": "tsc",
+		"typecheck": "tsc --noEmit",
+		"clean": "rm -rf dist",
+		"lint": "biome check .",
+		"lint:fix": "biome check --write .",
+		"test": "vitest run",
+		"test:coverage": "vitest run --coverage",
+		"prepublishOnly": "npm run clean && npm run build"
+	},
+	"engines": {
+		"node": ">=20"
+	}
 }

@@ -79,8 +79,18 @@ describe("TokenBudgetManager", () => {
 
 	it("condenseMemory shrinks entries", () => {
 		const entries = [
-			{ taskId: "T1", summary: "Fix typo", filesChanged: ["readme.md"], issues: [] },
-			{ taskId: "T2", summary: "Add test", filesChanged: ["test/foo.ts"], issues: ["flaky"] },
+			{
+				taskId: "T1",
+				summary: "Fix typo",
+				filesChanged: ["readme.md"],
+				issues: [],
+			},
+			{
+				taskId: "T2",
+				summary: "Add test",
+				filesChanged: ["test/foo.ts"],
+				issues: ["flaky"],
+			},
 		];
 		const condensed = TokenBudgetManager.condenseMemory(entries);
 		expect(condensed).toContain("T1");

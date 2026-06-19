@@ -1,8 +1,18 @@
-import { describe, expect, it } from "vitest";
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createBackup, revertBackup, deleteBackup } from "../src/utils/backup.js";
+import { describe, expect, it } from "vitest";
+import {
+	createBackup,
+	deleteBackup,
+	revertBackup,
+} from "../src/utils/backup.js";
 
 describe("Backup — directory strategy", () => {
 	function makeProject() {
@@ -48,7 +58,9 @@ describe("Backup — directory strategy", () => {
 		const ok = revertBackup(dir, backup);
 		expect(ok).toBe(true);
 		expect(readFileSync(join(dir, "readme.txt"), "utf-8")).toBe("original");
-		expect(readFileSync(join(dir, "src", "main.ts"), "utf-8")).toBe("export const x = 1;");
+		expect(readFileSync(join(dir, "src", "main.ts"), "utf-8")).toBe(
+			"export const x = 1;",
+		);
 	});
 
 	it("deletes backup directory", () => {

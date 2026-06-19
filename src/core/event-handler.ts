@@ -42,7 +42,10 @@ export function createChatMessageHandler(controller: MissionController) {
 		if (!text) return;
 
 		// /btw sideline question — fire-and-forget, never a task request
-		if (text.trim().toLowerCase().startsWith("/btw ") || text.trim().toLowerCase().startsWith("btw ")) {
+		if (
+			text.trim().toLowerCase().startsWith("/btw ") ||
+			text.trim().toLowerCase().startsWith("btw ")
+		) {
 			const question = text.replace(/^\/(btw)\s+|^btw\s+/i, "").trim();
 			if (question) {
 				try {
@@ -114,7 +117,7 @@ export function looksLikeTaskRequest(text: string): boolean {
 
 	// Weak positive signals — only count if combined with a strong keyword
 	const weakSignals = ["please", "help me", "can you"];
-	const hasWeakSignal = weakSignals.some((kw) => lower.includes(kw));
+	const _hasWeakSignal = weakSignals.some((kw) => lower.includes(kw));
 
 	// Strong positive signals — definitive task request words
 	const strongKeywords = [

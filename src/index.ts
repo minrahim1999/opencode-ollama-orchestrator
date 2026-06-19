@@ -3,14 +3,14 @@ import { tool } from "@opencode-ai/plugin";
 import { AGENTS } from "./agents/index.js";
 import { createConfigHandler } from "./core/config-handler.js";
 import { createChatMessageHandler } from "./core/event-handler.js";
+import { FastModeController } from "./core/fast-mode.js";
+import type { GuardResult } from "./core/hallucination-guard.js";
+import { validateWrite } from "./core/hallucination-guard.js";
 import { MissionController } from "./core/mission-controller.js";
+import { resolveModeConfig } from "./core/mode.js";
+import { TokenBudgetManager } from "./core/token-budget.js";
 import { createDelegateTaskTool } from "./tools/delegate-task.js";
 import { Logger } from "./utils/logger.js";
-import { resolveModeConfig } from "./core/mode.js";
-import { FastModeController } from "./core/fast-mode.js";
-import { TokenBudgetManager } from "./core/token-budget.js";
-import { validateWrite } from "./core/hallucination-guard.js";
-import type { GuardResult } from "./core/hallucination-guard.js";
 
 const plugin: Plugin = async (input) => {
 	const { client, directory } = input;
@@ -20,8 +20,18 @@ const plugin: Plugin = async (input) => {
 	const { loadOrchestratorConfig } = await import("./utils/constants.js");
 	const cfg = loadOrchestratorConfig(directory);
 
-	const modeCfg = resolveModeConfig(cfg.mode, cfg.fastMode as unknown as Partial<import("./core/mode.js").ModeRuntimeConfig>);
-	Logger.log("info", "plugin", `Orchestrator starting in ${modeCfg.mode} mode`, { mode: modeCfg.mode });
+	const modeCfg = resolveModeConfig(
+		cfg.mode,
+		cfg.fastMode as unknown as Partial<
+			import("./core/mode.js").ModeRuntimeConfig
+		>,
+	);
+	Logger.log(
+		"info",
+		"plugin",
+		`Orchestrator starting in ${modeCfg.mode} mode`,
+		{ mode: modeCfg.mode },
+	);
 
 	// Single shared MissionController for both events and tools
 	const controller = new MissionController(
@@ -45,7 +55,12 @@ const plugin: Plugin = async (input) => {
 			},
 			guardFn: modeCfg.preWriteAudit
 				? (response: string, scope: string[]): GuardResult =>
-					validateWrite(directory, response, scope, modeCfg.confidenceThreshold)
+						validateWrite(
+							directory,
+							response,
+							scope,
+							modeCfg.confidenceThreshold,
+						)
 				: undefined,
 			budgetMgr: new TokenBudgetManager({
 				maxTokensPerTask: modeCfg.maxTokensPerTask,

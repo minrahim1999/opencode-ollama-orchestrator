@@ -1,7 +1,10 @@
 import { tool } from "@opencode-ai/plugin";
 import type { SessionInfo } from "../core/types.js";
-import { loadOrchestratorConfig, resolveAgentAlias } from "../utils/constants.js";
 import { loadUserConfig, parseModel } from "../utils/config-loader.js";
+import {
+	loadOrchestratorConfig,
+	resolveAgentAlias,
+} from "../utils/constants.js";
 
 interface DelegateTaskDeps {
 	client: any;

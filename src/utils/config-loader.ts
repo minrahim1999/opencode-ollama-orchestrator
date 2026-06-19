@@ -5,7 +5,7 @@
  * Includes simple in-memory caching with mtime check to avoid synchronous
  * disk reads on every session/prompt call.
  */
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 

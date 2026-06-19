@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { TokenBucket, createOllamaRateLimiter } from "../src/utils/ratelimiter.js";
+import {
+	createOllamaRateLimiter,
+	TokenBucket,
+} from "../src/utils/ratelimiter.js";
 
 describe("TokenBucket", () => {
 	it("allows burst up to capacity", () => {
