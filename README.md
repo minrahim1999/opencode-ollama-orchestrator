@@ -235,6 +235,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 ### Recent Versions
 
+- **2.5.1** — Fix question modal: strategist now controls pipeline launch via start_mission tool
 - **2.5.0** — Critical fix: model switching now works (chat.message hook + prompt-based model passing)
 - **2.4.0** — God class split: SessionManager + MissionStore extracted, 28 integration tests
 - **2.3.0** — Major overhaul: 16 critical bug fixes, config caching, dedup, dead code cleanup

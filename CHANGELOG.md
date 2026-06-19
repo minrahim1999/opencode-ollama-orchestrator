@@ -4,6 +4,30 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-06-19
+
+### Fix: Question Modal Not Working
+
+The `chat.message` hook was auto-starting the pipeline (`controller.start()`) immediately when it detected a task-like message. This bypassed the strategist agent entirely — the pipeline ran in headless subagent sessions where the `question` tool can't show TUI modals, so questions appeared as plain text.
+
+### Changed
+- **event-handler.ts**: Removed auto-start of `controller.start()`. The hook now only handles `/btw` sideline questions. All other messages are processed by the strategist agent (the primary session) which can call the `question` tool to show interactive modals.
+- **index.ts**: Added `start_mission` tool — called by the strategist after user confirms via the question modal. Takes a `description` argument and calls `controller.start(description, true)`.
+- **strategist.ts**: Updated prompt to instruct the strategist to call `start_mission` after the user selects "Proceed" from the question tool modal.
+- **config-handler.ts**: Added `start_mission` to the strategist agent's default tools and permissions.
+
+### Flow (New)
+```
+User message → Strategist processes in primary session
+  → Strategist calls question tool → Interactive modal shows
+  → User selects "Proceed" → Strategist calls start_mission tool
+  → Pipeline launches (architect → engineers → auditor)
+```
+
+### Test Results
+- 213 tests passing (16 test files)
+- Typecheck clean
+
 ## [2.5.0] - 2026-06-19
 
 ### Critical Fix: Model Switching Was Completely Broken
