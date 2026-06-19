@@ -85,7 +85,9 @@ const plugin: Plugin = async (input) => {
 				args: {
 					description: tool.schema
 						.string()
-						.describe("Full task description — what the mission should accomplish"),
+						.describe(
+							"Full task description — what the mission should accomplish",
+						),
 				},
 				execute: async (args: { description: string }) => {
 					try {
