@@ -4,7 +4,7 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [2.5.2] - 2026-06-22
+## [2.5.3] - 2026-06-22
 
 ### Feature: Ponytail "Lazy Senior Dev" Integration
 
