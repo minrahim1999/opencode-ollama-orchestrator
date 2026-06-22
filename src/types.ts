@@ -142,6 +142,9 @@ export interface OrchestratorConfig {
 	/** DOX: append to AGENTS.md on mission completion */
 	doxAutoCloseout?: boolean;
 
+	/** Ponytail "lazy senior dev" intensity: off, lite, full, ultra (default: full) */
+	ponytailLevel?: string;
+
 	/** Global small_model override (fast inference) */
 	smallModel?: string;
 

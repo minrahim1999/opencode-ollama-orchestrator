@@ -34,6 +34,7 @@ export function loadOrchestratorConfig(directory: string): {
 	doxAutoInit: boolean;
 	doxAutoCloseout: boolean;
 	doxEnabled: boolean;
+	ponytailLevel: string;
 	mode: import("../types.js").OrchestratorMode;
 	fastMode: import("../types.js").FastModeConfig | undefined;
 	notify?: {
@@ -57,6 +58,7 @@ export function loadOrchestratorConfig(directory: string): {
 		doxAutoInit: true,
 		doxAutoCloseout: true,
 		doxEnabled: true,
+		ponytailLevel: "full",
 		mode: "slow" as import("../types.js").OrchestratorMode,
 		fastMode: undefined as import("../types.js").FastModeConfig | undefined,
 	};
@@ -95,6 +97,8 @@ export function loadOrchestratorConfig(directory: string): {
 				opts.doxAutoCloseout = pluginOpts.doxAutoCloseout;
 			if (pluginOpts?.doxEnabled !== undefined)
 				opts.doxEnabled = pluginOpts.doxEnabled;
+			if (pluginOpts?.ponytailLevel !== undefined)
+				opts.ponytailLevel = pluginOpts.ponytailLevel;
 			if (pluginOpts?.fastMode) {
 				opts.mode = pluginOpts.fastMode.mode ?? "slow";
 				opts.fastMode = pluginOpts.fastMode;

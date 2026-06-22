@@ -172,6 +172,7 @@ Each mission creates files under `.opencode/`:
 - **DOX integration** — Auto-generates timestamped run records
 - **Pre-mission backup** — Auto-creates git stash or directory snapshot before execution
 - **Rate limiting** — Token bucket limits concurrent session creation
+- **Ponytail integration** — "Lazy senior dev" ruleset injected into every system prompt via `experimental.chat.system.transform`. Configurable intensity: `lite`, `full` (default), `ultra`, `off`. No commands needed — active by default.
 
 ---
 
@@ -225,7 +226,7 @@ cd $(npm root -g)/opencode-ollama-orchestrator
 npm test
 ```
 
-214 tests covering all core modules.
+226 tests covering all core modules.
 
 ---
 
@@ -235,6 +236,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 ### Recent Versions
 
+- **2.5.2** — Ponytail integration: "lazy senior dev" ruleset in system prompts
 - **2.5.1** — Fix question modal: strategist now controls pipeline launch via start_mission tool
 - **2.5.0** — Critical fix: model switching now works (chat.message hook + prompt-based model passing)
 - **2.4.0** — God class split: SessionManager + MissionStore extracted, 28 integration tests

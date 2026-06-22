@@ -8,6 +8,11 @@ import type { GuardResult } from "./core/hallucination-guard.js";
 import { validateWrite } from "./core/hallucination-guard.js";
 import { MissionController } from "./core/mission-controller.js";
 import { resolveModeConfig } from "./core/mode.js";
+import {
+	DEFAULT_PONYTAIL_LEVEL,
+	getPonytailInstructions,
+	normalizePonytailLevel,
+} from "./core/ponytail.js";
 import { TokenBudgetManager } from "./core/token-budget.js";
 import { createDelegateTaskTool } from "./tools/delegate-task.js";
 import { Logger } from "./utils/logger.js";
@@ -32,6 +37,14 @@ const plugin: Plugin = async (input) => {
 		`Orchestrator starting in ${modeCfg.mode} mode`,
 		{ mode: modeCfg.mode },
 	);
+
+	// Resolve ponytail level from plugin config
+	const ponytailLevel = normalizePonytailLevel(cfg.ponytailLevel);
+	if (ponytailLevel !== "off") {
+		Logger.log("info", "plugin", `Ponytail active at ${ponytailLevel} level`, {
+			ponytailLevel,
+		});
+	}
 
 	// Single shared MissionController for both events and tools
 	const controller = new MissionController(
@@ -229,6 +242,13 @@ const plugin: Plugin = async (input) => {
 				Logger.log("info", "plugin", `Chat model resolved to: ${model}`, {
 					model,
 				});
+			}
+		},
+		"experimental.chat.system.transform": async (_input, output) => {
+			if (ponytailLevel === "off") return;
+			const instructions = getPonytailInstructions(ponytailLevel);
+			if (instructions) {
+				output.system.push(instructions);
 			}
 		},
 	};

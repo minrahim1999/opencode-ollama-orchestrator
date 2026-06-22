@@ -4,6 +4,44 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.5.2] - 2026-06-22
+
+### Feature: Ponytail "Lazy Senior Dev" Integration
+
+Integrated the [Ponytail](https://github.com/DietrichGebert/ponytail) ruleset directly into the orchestrator plugin — no external dependency, no commands needed. The ruleset is injected into every agent's system prompt via `experimental.chat.system.transform`, making all agents (strategist, architect, engineer, auditor, specialist, spark) write less code, prefer stdlib/platform features, and never over-engineer.
+
+### Added
+- **`src/core/ponytail.ts`**: Self-contained ponytail ruleset builder with 4 intensity levels (`off`, `lite`, `full`, `ultra`). Default: `full`. No dependency on the ponytail repo — the ruleset text is embedded as the single source of truth.
+- **`index.ts`**: Added `experimental.chat.system.transform` hook that injects ponytail instructions into every system prompt at the configured level. Resolved once at plugin init from `cfg.ponytailLevel`.
+- **`types.ts`**: Added `ponytailLevel` to `OrchestratorConfig` interface.
+- **`constants.ts`**: `loadOrchestratorConfig` now reads and returns `ponytailLevel` from plugin config (default: `"full"`).
+- **`config-handler.ts`**: `config.orchestrator` now includes `ponytailLevel` in the runtime config object.
+- **`test/ponytail.test.ts`**: 13 tests covering level normalization, instruction generation, ladder rungs, safety sections, and intensity-specific content.
+
+### Configuration
+
+Add `ponytailLevel` to your plugin config in `opencode.json`:
+
+```json
+{
+  "plugin": [
+    ["opencode-ollama-orchestrator", {
+      "ponytailLevel": "ultra"
+    }]
+  ]
+}
+```
+
+Levels:
+- `off` — No injection
+- `lite` — Build what's asked, name the lazier alternative in one line
+- `full` (default) — The ladder enforced. Stdlib + native first. Shortest diff
+- `ultra` — YAGNI extremist. Deletion before addition. Challenge the request
+
+### Test Results
+- 226 tests passing (17 test files)
+- Typecheck clean
+
 ## [2.5.1] - 2026-06-19
 
 ### Fix: Question Modal Not Working
