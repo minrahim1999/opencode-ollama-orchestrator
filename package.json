@@ -1,6 +1,6 @@
 {
 	"name": "opencode-ollama-orchestrator",
-	"version": "2.5.3",
+	"version": "2.6.0",
 	"description": "Multi-agent orchestrator for OpenCode. Provider-agnostic — uses whatever model is configured per agent. Automatic mission mode with per-project plan/todo scoping.",
 	"type": "module",
 	"main": "dist/index.js",

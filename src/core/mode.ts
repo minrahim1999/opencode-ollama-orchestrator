@@ -1,17 +1,15 @@
 /**
  * Operating mode system for opencode-ollama-orchestrator.
  *
- * - **slow**:  Default. Multi-agent, parallel execution, phase gates, human approvals,
- *              full DOX, maximum quality.
- * - **fast**:  Autonomous 24/7. Single-worker, strict token budgets, hallucination guards,
- *              no human gates, auto-resume, smaller models, evidence-checked writes.
+ * - **automation: false** (default): Human interaction. Multi-agent, parallel
+ *   execution, phase gates, human approvals, full DOX, maximum quality.
+ * - **automation: true**: Fully autonomous. Single-worker, strict token budgets,
+ *   hallucination guards, no human gates, auto-resume, evidence-checked writes.
  */
-
-export type OrchestratorMode = "slow" | "fast";
 
 /** Per-mode runtime settings derived from plugin config */
 export interface ModeRuntimeConfig {
-	mode: OrchestratorMode;
+	automation: boolean;
 
 	// Execution
 	maxParallelWorkers: number;
@@ -41,13 +39,13 @@ export interface ModeRuntimeConfig {
 	enableDox: boolean;
 	memoryRetentionTasks: number; // how many completed tasks to keep
 
-	// Model overrides for fast mode (use smaller/faster models)
-	fastModelOverrides?: Partial<Record<string, string>>;
+	// Model overrides for automation mode (use smaller/faster models)
+	automationModelOverrides?: Partial<Record<string, string>>;
 }
 
-/** Default slow-mode config (mirrors current behavior) */
-export const SLOW_MODE_DEFAULTS: ModeRuntimeConfig = {
-	mode: "slow",
+/** Default manual-mode config (automation off — human interaction) */
+export const MANUAL_DEFAULTS: ModeRuntimeConfig = {
+	automation: false,
 	maxParallelWorkers: 3,
 	maxRetries: 3,
 	requireApproval: false,
@@ -72,9 +70,9 @@ export const SLOW_MODE_DEFAULTS: ModeRuntimeConfig = {
 	memoryRetentionTasks: 5,
 };
 
-/** Fast-mode defaults — conservative, autonomous, token-efficient */
-export const FAST_MODE_DEFAULTS: ModeRuntimeConfig = {
-	mode: "fast",
+/** Automation-mode defaults — conservative, autonomous, token-efficient */
+export const AUTOMATION_DEFAULTS: ModeRuntimeConfig = {
+	automation: true,
 	maxParallelWorkers: 1,
 	maxRetries: 2,
 	requireApproval: false,
@@ -98,7 +96,7 @@ export const FAST_MODE_DEFAULTS: ModeRuntimeConfig = {
 	enableDox: false,
 	memoryRetentionTasks: 2,
 
-	fastModelOverrides: {
+	automationModelOverrides: {
 		strategist: undefined,
 		architect: undefined,
 		engineer: undefined,
@@ -107,19 +105,19 @@ export const FAST_MODE_DEFAULTS: ModeRuntimeConfig = {
 	},
 };
 
-/** Resolve effective runtime config from user plugin options */
+/** Resolve effective runtime config from automation toggle + user overrides */
 export function resolveModeConfig(
-	mode: OrchestratorMode = "slow",
+	automation = false,
 	userOverrides?: Partial<ModeRuntimeConfig>,
 ): ModeRuntimeConfig {
-	const base = mode === "fast" ? FAST_MODE_DEFAULTS : SLOW_MODE_DEFAULTS;
-	const merged = { ...base, ...userOverrides, mode };
+	const base = automation ? AUTOMATION_DEFAULTS : MANUAL_DEFAULTS;
+	const merged = { ...base, ...userOverrides, automation };
 
 	// Sanity bounds
 	merged.maxParallelWorkers = clamp(
 		merged.maxParallelWorkers,
 		1,
-		mode === "fast" ? 2 : 3,
+		automation ? 2 : 3,
 	);
 	merged.maxRetries = clamp(merged.maxRetries, 1, 5);
 	merged.confidenceThreshold = clamp(merged.confidenceThreshold, 0, 1);
@@ -132,7 +130,7 @@ function clamp(v: number, min: number, max: number): number {
 	return Math.min(Math.max(v, min), max);
 }
 
-/** Check if a task classification should trigger fast-mode fast-track */
+/** Check if a task classification should trigger automation fast-track */
 export function isFastTrackRequest(input: string): boolean {
 	const fastKeywords = [
 		"fix",

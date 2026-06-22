@@ -145,6 +145,14 @@ export interface OrchestratorConfig {
 	/** Ponytail "lazy senior dev" intensity: off, lite, full, ultra (default: full) */
 	ponytailLevel?: string;
 
+	/**
+	 * Automation toggle — when false (default), the orchestrator is fully
+	 * passive: no task detection, no pipeline, no missions, no subagents.
+	 * Agents use simple prompts and behave as normal OpenCode agents.
+	 * When true, the full multi-agent pipeline is active.
+	 */
+	automation?: boolean;
+
 	/** Global small_model override (fast inference) */
 	smallModel?: string;
 
@@ -154,26 +162,10 @@ export interface OrchestratorConfig {
 }
 
 /**
- * Runtime operating mode for the orchestrator.
- *
- * - **slow** (default): Multi-agent, parallel, phase gates, human approvals, full quality.
- * - **fast**:  Autonomous 24/7, single-worker, hallucination guard, token budget,
- *              no human gates, auto-resume, aggressive task detection.
+ * Plugin-level fast-mode overrides (for automation mode).
  */
-export type OrchestratorMode = "slow" | "fast";
-
-/** Plugin-level fast-mode overrides */
-export interface FastModeConfig {
-	/** Runtime mode selector */
-	mode?: OrchestratorMode;
-
-	/** Small-model overrides for fast mode agents */
-	fastModels?: Partial<Record<string, string>>;
-
-	/** Aggressive fast-track keyword detection (disable to always run full pipeline) */
-	enableFastTrack?: boolean;
-
-	/** Per-task token ceiling in fast mode */
+export interface AutomationModeConfig {
+	/** Per-task token ceiling in automation mode */
 	maxTokensPerTask?: number;
 
 	/** Total context window budget before auto-summarize */
@@ -182,12 +174,15 @@ export interface FastModeConfig {
 	/** Confidence threshold for hallucination guard (0.0–1.0) */
 	confidenceThreshold?: number;
 
-	/** Seconds before a fast-mode task is considered stalled */
-	fastTaskTimeoutSec?: number;
+	/** Seconds before a task is considered stalled */
+	taskTimeoutSec?: number;
+
+	/** Aggressive fast-track keyword detection */
+	enableFastTrack?: boolean;
 }
 
 export interface PluginConfig extends OrchestratorConfig {
-	fastMode?: FastModeConfig;
+	automationMode?: AutomationModeConfig;
 }
 
 /* ─── Runtime types (unchanged) ─── */

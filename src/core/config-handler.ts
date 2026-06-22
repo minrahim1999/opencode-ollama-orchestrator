@@ -427,6 +427,8 @@ export function createConfigHandler(deps: ConfigHandlerDeps) {
 			doxAutoCloseout: pluginOpts.doxAutoCloseout ?? true,
 			// Ponytail settings
 			ponytailLevel: pluginOpts.ponytailLevel ?? "full",
+			// Automation settings
+			automation: pluginOpts.automation ?? false,
 		};
 
 		// NO commands registered

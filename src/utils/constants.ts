@@ -35,8 +35,8 @@ export function loadOrchestratorConfig(directory: string): {
 	doxAutoCloseout: boolean;
 	doxEnabled: boolean;
 	ponytailLevel: string;
-	mode: import("../types.js").OrchestratorMode;
-	fastMode: import("../types.js").FastModeConfig | undefined;
+	automation: boolean;
+	automationMode: import("../types.js").AutomationModeConfig | undefined;
 	notify?: {
 		ntfyTopic?: string;
 		webhookUrl?: string;
@@ -59,8 +59,8 @@ export function loadOrchestratorConfig(directory: string): {
 		doxAutoCloseout: true,
 		doxEnabled: true,
 		ponytailLevel: "full",
-		mode: "slow" as import("../types.js").OrchestratorMode,
-		fastMode: undefined as import("../types.js").FastModeConfig | undefined,
+		automation: false,
+		automationMode: undefined as import("../types.js").AutomationModeConfig | undefined,
 	};
 
 	if (existsSync(configPath)) {
@@ -99,9 +99,10 @@ export function loadOrchestratorConfig(directory: string): {
 				opts.doxEnabled = pluginOpts.doxEnabled;
 			if (pluginOpts?.ponytailLevel !== undefined)
 				opts.ponytailLevel = pluginOpts.ponytailLevel;
-			if (pluginOpts?.fastMode) {
-				opts.mode = pluginOpts.fastMode.mode ?? "slow";
-				opts.fastMode = pluginOpts.fastMode;
+			if (pluginOpts?.automation !== undefined)
+				opts.automation = pluginOpts.automation;
+			if (pluginOpts?.automationMode) {
+				opts.automationMode = pluginOpts.automationMode;
 			}
 		} catch {}
 	}

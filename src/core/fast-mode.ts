@@ -1,5 +1,5 @@
 /**
- * FastModeController — autonomous 24/7 mission runner.
+ * AutomationController — autonomous 24/7 mission runner.
  *
  * Differences from standard MissionController:
  *   - Single worker (maxParallelWorkers = 1)
@@ -18,7 +18,7 @@ import type { GuardResult } from "./hallucination-guard.js";
 import type { ModeRuntimeConfig } from "./mode.js";
 import type { TokenBudgetManager } from "./token-budget.js";
 
-export interface FastMissionEntry {
+export interface AutoMissionEntry {
 	slug: string;
 	description: string;
 	createdAt: number;
@@ -28,8 +28,8 @@ export interface FastMissionEntry {
 	guardViolations: number;
 }
 
-export class FastModeController {
-	private readonly missions = new Map<string, FastMissionEntry>();
+export class AutomationController {
+	private readonly missions = new Map<string, AutoMissionEntry>();
 	private readonly queue: string[] = [];
 	private activeMission?: string;
 	private watcherTimer?: ReturnType<typeof setInterval>;
@@ -60,7 +60,7 @@ export class FastModeController {
 		this.isRunning = true;
 		Logger.log(
 			"info",
-			"fast-mode",
+			"automation",
 			`Watcher started (interval=${watchIntervalMs}ms)`,
 		);
 		this.watcherTimer = setInterval(() => this.tick(), watchIntervalMs);
@@ -74,13 +74,13 @@ export class FastModeController {
 			clearInterval(this.watcherTimer);
 			this.watcherTimer = undefined;
 		}
-		Logger.log("info", "fast-mode", "Watcher stopped");
+		Logger.log("info", "automation", "Watcher stopped");
 	}
 
 	/** Queue a mission */
 	enqueue(slug: string, description: string): void {
 		if (this.missions.has(slug)) {
-			Logger.log("warn", "fast-mode", `Mission ${slug} already queued`);
+			Logger.log("warn", "automation", `Mission ${slug} already queued`);
 			return;
 		}
 		this.missions.set(slug, {
@@ -91,7 +91,7 @@ export class FastModeController {
 			guardViolations: 0,
 		});
 		this.queue.push(slug);
-		Logger.log("info", "fast-mode", `Enqueued mission: ${slug}`);
+		Logger.log("info", "automation", `Enqueued mission: ${slug}`);
 	}
 
 	/** Manual tick — for testing or external scheduler */
@@ -112,7 +112,7 @@ export class FastModeController {
 		if (exhausted?.exhausted) {
 			Logger.log(
 				"error",
-				"fast-mode",
+				"automation",
 				`Token budget exhausted. Pausing mission ${next}.`,
 			);
 			mission.state = "paused";
@@ -125,14 +125,14 @@ export class FastModeController {
 		const timeoutHandle = setTimeout(() => {
 			Logger.log(
 				"warn",
-				"fast-mode",
+				"automation",
 				`Mission ${next} timed out after ${timeoutMs}ms`,
 			);
 			mission.state = "failed";
 		}, timeoutMs);
 
 		try {
-			Logger.log("info", "fast-mode", `Executing mission: ${next}`);
+			Logger.log("info", "automation", `Executing mission: ${next}`);
 			await this.onMissionExecute(next);
 			mission.state = "completed";
 			mission.completedAt = Date.now();
@@ -153,7 +153,7 @@ export class FastModeController {
 		} catch (err) {
 			Logger.log(
 				"error",
-				"fast-mode",
+				"automation",
 				`Mission ${next} failed: ${String(err)}`,
 			);
 			mission.state = "failed";
@@ -196,7 +196,7 @@ export class FastModeController {
 	/** Get status summary */
 	status(): string[] {
 		const lines: string[] = [];
-		lines.push(`Fast Mode — Active: ${this.activeMission ?? "none"}`);
+		lines.push(`Automation — Active: ${this.activeMission ?? "none"}`);
 		lines.push(`Queue: ${this.queue.length}`);
 		const allMissions = Array.from(this.missions.values());
 		for (const m of allMissions) {
@@ -222,12 +222,12 @@ export class FastModeController {
 		if (mission?.state !== "paused") return false;
 		mission.state = "queued";
 		this.queue.push(slug);
-		Logger.log("info", "fast-mode", `Resumed mission: ${slug}`);
+		Logger.log("info", "automation", `Resumed mission: ${slug}`);
 		return true;
 	}
 
 	/** List all missions */
-	list(): FastMissionEntry[] {
+	list(): AutoMissionEntry[] {
 		return Array.from(this.missions.values());
 	}
 }

@@ -172,6 +172,7 @@ Each mission creates files under `.opencode/`:
 - **DOX integration** — Auto-generates timestamped run records
 - **Pre-mission backup** — Auto-creates git stash or directory snapshot before execution
 - **Rate limiting** — Token bucket limits concurrent session creation
+- **Automation toggle** — `automation: false` (default) requires human interaction with phase gate approvals; `automation: true` runs fully autonomous with no human gates
 - **Ponytail integration** — "Lazy senior dev" ruleset injected into every system prompt via `experimental.chat.system.transform`. Configurable intensity: `lite`, `full` (default), `ultra`, `off`. No commands needed — active by default.
 
 ---
@@ -187,6 +188,8 @@ The plugin registers these tools (callable by agents or via slash commands):
 - `resume_from` — Resume from a specific task ID
 - `check_watchdog` — Detect and kill stuck sessions
 - `revert_mission` — Revert to pre-mission state using backup
+- `toggle_automation` — Toggle automation on/off (true = fully autonomous, false = human interaction)
+- `auto_run` — Queue a mission for autonomous execution (requires automation: true)
 
 ---
 
@@ -226,7 +229,7 @@ cd $(npm root -g)/opencode-ollama-orchestrator
 npm test
 ```
 
-226 tests covering all core modules.
+228 tests covering all core modules.
 
 ---
 
@@ -236,6 +239,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 ### Recent Versions
 
+- **2.6.0** — Replace slow/fast modes with simple automation on/off toggle. Ponytail integration.
 - **2.5.3** — Ponytail integration: "lazy senior dev" ruleset in system prompts
 - **2.5.1** — Fix question modal: strategist now controls pipeline launch via start_mission tool
 - **2.5.0** — Critical fix: model switching now works (chat.message hook + prompt-based model passing)

@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { FastModeController } from "../src/core/fast-mode.js";
+import { AutomationController } from "../src/core/fast-mode.js";
 import { resolveModeConfig } from "../src/core/mode.js";
 import { TokenBudgetManager } from "../src/core/token-budget.js";
 
-describe("FastModeController", () => {
+describe("AutomationController", () => {
 	const makeCtrl = (onExec = vi.fn(async (_slug: string) => {})) => {
-		const cfg = resolveModeConfig("fast");
-		return new FastModeController({
+		const cfg = resolveModeConfig(true);
+		return new AutomationController({
 			config: cfg,
 			onMissionExecute: onExec,
 			budgetMgr: new TokenBudgetManager({
@@ -72,7 +72,7 @@ describe("FastModeController", () => {
 		const ctrl = makeCtrl();
 		ctrl.enqueue("stat", "Stat");
 		const lines = ctrl.status();
-		expect(lines[0]).toContain("Fast Mode");
+		expect(lines[0]).toContain("Automation");
 		expect(lines[1]).toContain("Queue: 1");
 		expect(lines[2]).toContain("stat: queued");
 	});
@@ -80,7 +80,7 @@ describe("FastModeController", () => {
 	it("startWatch schedules interval", () => {
 		const ctrl = makeCtrl();
 		ctrl.startWatch(100);
-		expect(ctrl.status()[0]).toContain("Fast Mode");
+		expect(ctrl.status()[0]).toContain("Automation");
 		ctrl.stopWatch();
 	});
 

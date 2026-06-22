@@ -3,7 +3,7 @@ import { tool } from "@opencode-ai/plugin";
 import { AGENTS } from "./agents/index.js";
 import { createConfigHandler } from "./core/config-handler.js";
 import { createChatMessageHandler } from "./core/event-handler.js";
-import { FastModeController } from "./core/fast-mode.js";
+import { AutomationController } from "./core/fast-mode.js";
 import type { GuardResult } from "./core/hallucination-guard.js";
 import { validateWrite } from "./core/hallucination-guard.js";
 import { MissionController } from "./core/mission-controller.js";
@@ -21,21 +21,21 @@ const plugin: Plugin = async (input) => {
 	const { client, directory } = input;
 	const sessions = new Map<string, import("./core/types.js").SessionInfo>();
 
-	// Load orchestrator config for notify/rateLimit/mode options
+	// Load orchestrator config
 	const { loadOrchestratorConfig } = await import("./utils/constants.js");
 	const cfg = loadOrchestratorConfig(directory);
 
 	const modeCfg = resolveModeConfig(
-		cfg.mode,
-		cfg.fastMode as unknown as Partial<
+		cfg.automation,
+		cfg.automationMode as unknown as Partial<
 			import("./core/mode.js").ModeRuntimeConfig
 		>,
 	);
 	Logger.log(
 		"info",
 		"plugin",
-		`Orchestrator starting in ${modeCfg.mode} mode`,
-		{ mode: modeCfg.mode },
+		`Orchestrator starting — automation: ${cfg.automation ? "ON" : "OFF"}`,
+		{ automation: cfg.automation },
 	);
 
 	// Resolve ponytail level from plugin config
@@ -58,13 +58,13 @@ const plugin: Plugin = async (input) => {
 			: undefined,
 	);
 
-	// Fast Mode controller — active only when in fast mode
-	let fastController: FastModeController | undefined;
-	if (modeCfg.mode === "fast") {
-		fastController = new FastModeController({
+	// Automation controller — active only when automation is ON
+	let autoController: AutomationController | undefined;
+	if (cfg.automation) {
+		autoController = new AutomationController({
 			config: modeCfg,
 			onMissionExecute: async (_slug: string) => {
-				Logger.log("info", "fast-mode", `Executing mission: ${_slug}`);
+				Logger.log("info", "automation", `Executing mission: ${_slug}`);
 			},
 			guardFn: modeCfg.preWriteAudit
 				? (response: string, scope: string[]): GuardResult =>
@@ -83,8 +83,8 @@ const plugin: Plugin = async (input) => {
 			}),
 			notifyConfig: cfg.notify as any,
 		});
-		fastController.startWatch(5000);
-		Logger.log("info", "plugin", "Fast Mode watcher started");
+		autoController.startWatch(5000);
+		Logger.log("info", "plugin", "Automation watcher started");
 	}
 
 	return {
@@ -103,10 +103,6 @@ const plugin: Plugin = async (input) => {
 						),
 				},
 				execute: async (args: { description: string }) => {
-					// Fire-and-forget: the pipeline runs in the background.
-					// We do NOT await it because the pipeline can take 10+ minutes
-					// (planning, execution, audit) and the tool call would timeout.
-					// The strategist gets a toast notification when the mission completes.
 					controller.start(args.description, true).catch((err) => {
 						Logger.log(
 							"error",
@@ -137,9 +133,9 @@ const plugin: Plugin = async (input) => {
 					const missionLines = controller.status();
 					const sessionLines = controller.sessionSummary();
 					const lines = [missionLines, "--- Sessions ---", ...sessionLines];
-					if (fastController) {
-						lines.push("--- Fast Mode ---");
-						lines.push(...fastController.status());
+					if (autoController) {
+						lines.push("--- Automation ---");
+						lines.push(...autoController.status());
 					}
 					return lines.join("\n");
 				},
@@ -204,9 +200,9 @@ const plugin: Plugin = async (input) => {
 						: `Failed to revert mission ${args.missionSlug}. Check logs for details.`;
 				},
 			}),
-			fast_run: tool({
+			auto_run: tool({
 				description:
-					"Queue a mission for Fast Mode execution (24/7 autonomous, single-worker, hallucination guard, token budget).",
+					"Queue a mission for autonomous execution (24/7, single-worker, hallucination guard, token budget). Requires automation: true.",
 				args: {
 					slug: tool.schema
 						.string()
@@ -216,23 +212,23 @@ const plugin: Plugin = async (input) => {
 						.describe("Short description of the mission"),
 				},
 				execute: async (args: { slug: string; description: string }) => {
-					if (!fastController) {
-						return "Fast Mode is not enabled. Set plugin.fastMode.mode = 'fast' in opencode.json.";
+					if (!autoController) {
+						return "Automation is not enabled. Set \"automation\": true in opencode.json plugin config.";
 					}
-					fastController.enqueue(args.slug, args.description);
-					return `Mission '${args.slug}' queued for fast execution.`;
+					autoController.enqueue(args.slug, args.description);
+					return `Mission '${args.slug}' queued for autonomous execution.`;
 				},
 			}),
-			set_orchestrator_mode: tool({
+			toggle_automation: tool({
 				description:
-					"Switch orchestrator runtime mode between 'slow' (multi-agent, human gates) and 'fast' (24/7 autonomous, single-worker, guards). Restart OpenCode for full effect.",
+					"Toggle automation on/off. When off (default), the orchestrator requires human interaction and phase gate approvals. When on, missions run fully autonomously with no human gates. Restart OpenCode for full effect.",
 				args: {
-					mode: tool.schema
-						.enum(["slow", "fast"])
-						.describe("Target mode: slow or fast"),
+					automation: tool.schema
+						.boolean()
+						.describe("true = fully autonomous (no human gates), false = human interaction (default)"),
 				},
-				execute: async (args: { mode: "slow" | "fast" }) => {
-					return `Mode set to '${args.mode}'. Note: This records the request. Restart OpenCode for the mode switch to take full effect.`;
+				execute: async (args: { automation: boolean }) => {
+					return `Automation set to ${args.automation ? "ON (fully autonomous)" : "OFF (human interaction)"}. Restart OpenCode for the change to take full effect.`;
 				},
 			}),
 		},

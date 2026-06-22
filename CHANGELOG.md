@@ -4,6 +4,35 @@ All notable changes follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-06-22
+
+### Breaking: Replace slow/fast modes with automation on/off toggle
+
+Removed the confusing `slow` and `fast` mode system. Replaced with a simple `automation` boolean:
+
+- **`automation: false`** (default) — Human interaction. Multi-agent, parallel execution, phase gates, human approvals, full quality. This is the old "slow" mode.
+- **`automation: true`** — Fully autonomous. Single-worker, hallucination guard, token budget, no human gates, auto-resume. This is the old "fast" mode.
+
+### Changed
+- **`mode.ts`**: `OrchestratorMode` type removed. `resolveModeConfig()` now takes a boolean `automation` parameter instead of `"slow" | "fast"`. `SLOW_MODE_DEFAULTS` → `MANUAL_DEFAULTS`, `FAST_MODE_DEFAULTS` → `AUTOMATION_DEFAULTS`.
+- **`types.ts`**: `OrchestratorMode`, `FastModeConfig` removed. Replaced with `AutomationModeConfig`. `PluginConfig.fastMode` → `PluginConfig.automationMode`.
+- **`constants.ts`**: `loadOrchestratorConfig` returns `automation: boolean` and `automationMode` instead of `mode` and `fastMode`.
+- **`fast-mode.ts`**: `FastModeController` class → `AutomationController`. `FastMissionEntry` → `AutoMissionEntry`. All log tags changed from "fast-mode" to "automation". Status label changed from "Fast Mode" to "Automation".
+- **`index.ts`**: `fastController` → `autoController`. `set_orchestrator_mode` tool → `toggle_automation` tool (takes boolean instead of enum). `fast_run` tool → `auto_run` tool. Log messages updated.
+- **`event-handler.ts`**: Version bumped to 2.6.0.
+- **`config-handler.ts`**: `config.orchestrator` now includes `automation` field.
+
+### Added
+- `automation` boolean to `OrchestratorConfig` (default: `false`)
+- `toggle_automation` tool — switch automation on/off at runtime
+- `auto_run` tool — queue missions for autonomous execution
+
+### Tests
+- Updated `mode.test.ts` — tests now use boolean instead of string mode
+- Updated `fast-mode.test.ts` — uses `AutomationController` and `resolveModeConfig(true)`
+- 228 tests passing (17 test files)
+- Typecheck clean
+
 ## [2.5.3] - 2026-06-22
 
 ### Feature: Ponytail "Lazy Senior Dev" Integration
